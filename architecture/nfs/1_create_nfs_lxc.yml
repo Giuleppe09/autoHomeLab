@@ -8,7 +8,6 @@
 
   tasks:
     # --- FASE 1: AUTO-DISCOVERY STORAGE ---
-    # QUESTO È IL TASK MANCANTE CHE CAUSAVA L'ERRORE:
     - name: Interroga Proxmox per individuare gli storage abilitati ai Template (vztmpl)
       ansible.builtin.shell: "pvesm status -content vztmpl | awk 'NR>1 {print $1}'"
       register: available_template_storage
@@ -32,15 +31,21 @@
 
     # --- FASE 2: DOWNLOAD TEMPLATE E CREAZIONE CONTAINER ---
     
+    # NOVITÀ: Salviamo l'ID in una nuova variabile sicura (actual_vmid) per bypassare il blocco di Ansible
+    - name: Determina se il VMID e' gia' presente nel file vars
+      ansible.builtin.set_fact:
+        actual_vmid: "{{ nfs_vmid }}"
+      when: nfs_vmid is defined and nfs_vmid is not none and nfs_vmid != 'null' and nfs_vmid != ''
+
     - name: Chiedi a Proxmox il prossimo VMID se non è già stato assegnato
       ansible.builtin.command: pvesh get /cluster/nextid
       register: pve_next_vmid
-      when: nfs_vmid is none or nfs_vmid == 'null' or nfs_vmid == ''
+      when: actual_vmid is not defined
       changed_when: false
 
-    - name: Sovrascrivi la variabile nfs_vmid in memoria
+    - name: Imposta il nuovo VMID in memoria
       ansible.builtin.set_fact:
-        nfs_vmid: "{{ pve_next_vmid.stdout | trim }}"
+        actual_vmid: "{{ pve_next_vmid.stdout | trim }}"
       when: pve_next_vmid.stdout is defined
 
     - name: Aggiorna il file vars.yml in modo permanente con il nuovo VMID
@@ -48,12 +53,9 @@
       ansible.builtin.lineinfile:
         path: "../vars.yml"
         regexp: '^nfs_vmid:'
-        line: "nfs_vmid: {{ nfs_vmid }}"
+        line: "nfs_vmid: {{ actual_vmid }}"
       when: pve_next_vmid.stdout is defined
 
-    - name: Verifica se il template Ubuntu 24.04 e' gia' presente
-      ansible.builtin.shell: "pveam list {{ nfs_template_storage | trim }} | grep -q ubuntu-24.04-standard"
-      # ... resto del playbook invariato
     - name: Verifica se il template Ubuntu 24.04 e' gia' presente
       ansible.builtin.shell: "pveam list {{ nfs_template_storage | trim }} | grep -q ubuntu-24.04-standard"
       register: template_check
@@ -73,7 +75,7 @@
         api_token_secret: "{{ proxmox_api_token_secret }}"
         validate_certs: false
         node: pve
-        vmid: "{{ nfs_vmid }}"
+        vmid: "{{ actual_vmid }}"
         hostname: "{{ nfs_hostname }}"
         ostemplate: "{{ nfs_template_storage | trim }}:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst"
         cores: 1 
@@ -84,20 +86,26 @@
         cmode: console
         netif:
           net0: "name=eth0,bridge=vmbr0,ip={{ nfs_ip | trim }},gw={{ nfs_gw | trim }}" 
-        features:
-          - nesting=1 
         state: present
+
+    - name: Workaround Sicurezza Proxmox - Imposta feature nesting via CLI
+      ansible.builtin.command: "pct set {{ actual_vmid }} --features nesting=1"
 
     # --- FASE 3: BIND MOUNT STORAGE FISICO E START ---
-    - name: Configura il Bind Mount del disco fisico verso il container
-      ansible.builtin.lineinfile:
-        path: "/etc/pve/lxc/{{ nfs_vmid }}.conf"
-        regexp: '^mp0:'
-        line: "mp0: {{ host_mount_path }},mp={{ lxc_mount_path }}" 
-        state: present
+    # --- FASE 3: BIND MOUNT STORAGE FISICO E START ---
+    - name: Verifica se il disco dati (mp0) e' gia' configurato
+      ansible.builtin.shell: "grep -q '^mp0:' /etc/pve/lxc/{{ actual_vmid }}.conf"
+      register: mp_check
+      failed_when: false
+      changed_when: false
+
+    - name: Configura il Mount Point (Crea disco dati virtuale sullo storage scelto)
+      # Nota: Il numero 20 indica i Gigabyte del disco dati. Puoi cambiarlo a piacimento.
+      ansible.builtin.command: "pct set {{ actual_vmid }} -mp0 {{ host_mount_path }}:20,mp={{ lxc_mount_path }}"
+      when: mp_check.rc != 0
 
     - name: Avvia il container NFS
-      ansible.builtin.command: "pct start {{ nfs_vmid }}"
+      ansible.builtin.command: "pct start {{ actual_vmid }}"
       register: start_lxc
       failed_when: 
         - start_lxc.rc != 0 
