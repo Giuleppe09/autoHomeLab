@@ -10,7 +10,8 @@ lxc_disk_storage: local-lvm
 nfs_vmid: null
 nfs_hostname: null
 nfs_ip: 192.168.1.202/24
-nfs_gw: null
+nfs_gw: 192.168.1.1
 nfs_network: 192.168.1.0/24
-host_mount_path: local-lvm
+host_mount_path: local
 lxc_mount_path: /mnt/hdd_data
+nfs_template_storage: local

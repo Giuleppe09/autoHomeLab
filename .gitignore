@@ -1,0 +1,16 @@
+# Ambienti virtuali Python
+venv/
+env/
+
+# Cache e file compilati (visibili nel tuo screenshot)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Configurazioni dell'editor locale
+.vscode/
+
+# Cartelle specifiche del progetto da ignorare
+collections/

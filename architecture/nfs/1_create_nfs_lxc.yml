@@ -7,17 +7,10 @@
     - "../../secrets.yml"
 
   tasks:
-    # --- FASE 1: AUTO-DISCOVERY STORAGE ---
-    - name: Interroga Proxmox per individuare gli storage abilitati ai Template (vztmpl)
-      ansible.builtin.shell: "pvesm status -content vztmpl | awk 'NR>1 {print $1}'"
-      register: available_template_storage
-      changed_when: false
-
     - name: Valida l'esistenza dello storage per i Template
-      delegate_to: localhost
       ansible.builtin.fail:
-        msg: "❌ ERRORE: Lo storage '{{ nfs_lxc_template_storage | trim }}' non esiste o non supporta i template."
-      when: nfs_lxc_template_storage | trim not in available_template_storage.stdout.split('\n')
+        msg: "❌ ERRORE: Lo storage '{{ nfs_template_storage | trim }}' non esiste o non supporta i template."
+      when: nfs_template_storage | trim not in available_template_storage.stdout.split('\n')
 
     - name: Interroga Proxmox per individuare gli storage abilitati ai Dischi LXC (rootdir)
       ansible.builtin.shell: "pvesm status -content rootdir | awk 'NR>1 {print $1}'"
@@ -27,18 +20,18 @@
     - name: Valida l'esistenza dello storage per i Dischi LXC
       delegate_to: localhost
       ansible.builtin.fail:
-        msg: "❌ ERRORE: Lo storage '{{ nfs_lxc_disk_storage | trim }}' non esiste o non supporta i container."
-      when: nfs_lxc_disk_storage | trim not in available_disk_storage.stdout.split('\n')
+        msg: "❌ ERRORE: Lo storage '{{ nfs_template_storage | trim }}' non esiste o non supporta i container."
+      when: nfs_template_storage | trim not in available_disk_storage.stdout.split('\n')
 
     # --- FASE 2: DOWNLOAD TEMPLATE E CREAZIONE CONTAINER ---
     - name: Verifica se il template Ubuntu 24.04 e' gia' presente
-      ansible.builtin.shell: "pveam list {{ nfs_lxc_template_storage | trim }} | grep -q ubuntu-24.04-standard"
+      ansible.builtin.shell: "pveam list {{ nfs_template_storage | trim }} | grep -q ubuntu-24.04-standard"
       register: template_check
       failed_when: false
       changed_when: false
 
     - name: Scarica il template Ubuntu 24.04 sullo storage scelto
-      ansible.builtin.command: "pveam download {{ nfs_lxc_template_storage | trim }} ubuntu-24.04-standard_24.04-2_amd64.tar.zst"
+      ansible.builtin.command: "pveam download {{ nfs_template_storage | trim }} ubuntu-24.04-standard_24.04-2_amd64.tar.zst"
       when: template_check.rc != 0
 
     - name: Rilascia il container LXC Privilegiato tramite API Proxmox
@@ -50,31 +43,31 @@
         api_token_secret: "{{ proxmox_api_token_secret }}"
         validate_certs: false
         node: pve
-        vmid: "{{ nfs_lxc_vmid }}"
-        hostname: "{{ nfs_lxc_hostname }}"
-        ostemplate: "{{ nfs_lxc_template_storage | trim }}:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst"
-        cores: 1 #
-        memory: 512 #
-        disk: "{{ nfs_lxc_disk_storage | trim }}:8" #
-        unprivileged: false # Requisito fondamentale per il bind mount
+        vmid: "{{ nfs_vmid }}"
+        hostname: "{{ nfs_hostname }}"
+        ostemplate: "{{ nfs_template_storage | trim }}:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst"
+        cores: 1 
+        memory: 512 
+        disk: "{{ nfs_template_storage | trim }}:8" 
+        unprivileged: false 
         pubkey: "{{ lookup('file', '~/.ssh/id_ansible.pub') }}"
         cmode: console
         netif:
-          net0: "name=eth0,bridge=vmbr0,ip={{ nfs_lxc_ip | trim }},gw={{ nfs_lxc_gw | trim }}" #
+          net0: "name=eth0,bridge=vmbr0,ip={{ nfs_ip | trim }},gw={{ nfs_gw | trim }}" 
         features:
-          - nesting=1 #
+          - nesting=1 
         state: present
 
     # --- FASE 3: BIND MOUNT STORAGE FISICO E START ---
     - name: Configura il Bind Mount del disco fisico verso il container
       ansible.builtin.lineinfile:
-        path: "/etc/pve/lxc/{{ nfs_lxc_vmid }}.conf"
+        path: "/etc/pve/lxc/{{ nfs_vmid }}.conf"
         regexp: '^mp0:'
-        line: "mp0: {{ nfs_host_bind_path }},mp={{ nfs_lxc_mount_path }}" #
+        line: "mp0: {{ host_mount_path }},mp={{ lxc_mount_path }}" 
         state: present
 
     - name: Avvia il container NFS
-      ansible.builtin.command: "pct start {{ nfs_lxc_vmid }}"
+      ansible.builtin.command: "pct start {{ nfs_vmid }}"
       register: start_lxc
       failed_when: 
         - start_lxc.rc != 0 
@@ -83,14 +76,14 @@
 
     - name: Rimuovi vecchia fingerprint SSH del container dal PC locale
       delegate_to: localhost
-      ansible.builtin.shell: "ssh-keygen -f ~/.ssh/known_hosts -R {{ nfs_lxc_ip | split('/') | first }}"
+      ansible.builtin.shell: "ssh-keygen -f ~/.ssh/known_hosts -R {{ nfs_ip | split('/') | first }}"
       ignore_errors: yes
       changed_when: false
 
     - name: Attendi che il container sia raggiungibile via SSH
       delegate_to: localhost
       ansible.builtin.wait_for:
-        host: "{{ nfs_lxc_ip | split('/') | first }}"
+        host: "{{ nfs_ip | split('/') | first }}"
         port: 22
         delay: 2
         timeout: 60

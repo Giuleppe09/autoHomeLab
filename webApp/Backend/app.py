@@ -42,8 +42,7 @@ def config_page():
         
     # Recuperiamo gli storage trovati da Proxmox (o impostiamo dei fallback sicuri)
     template_storages = session.get('template_storages', ['local'])
-    disk_storages = session.get('disk_storages', ['local-lvm'])
-    
+
     return render_template('config.html', template_storages=template_storages, disk_storages=disk_storages)
 
 @app.route('/tailscale')

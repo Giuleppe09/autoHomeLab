@@ -132,17 +132,25 @@ async function confermaESalvaNFS() {
         btn.innerText = "Conferma e Salva"; 
     }
 }
-
 async function runNFSSetup() {
     const btn = document.getElementById('btn-run');
     const consoleOutput = document.getElementById('console-output');
+    
     consoleOutput.classList.remove('hidden');
     btn.disabled = true; 
     btn.innerText = "⏳ Installazione in corso...";
     consoleOutput.innerText = "Avvio processi Ansible...\n\n";
     
     try {
-        const response = await fetch('/api/nfs/setup', { method: 'POST' });
+        // Correggiamo la fetch inviando un body JSON vuoto e l'header corretto
+        const response = await fetch('/api/nfs/setup', { 
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({}) // Invia un payload vuoto ma valido
+        });
+        
         const reader = response.body.getReader();
         const decoder = new TextDecoder("utf-8");
         let buffer = "";
@@ -163,18 +171,22 @@ async function runNFSSetup() {
                     
                     if (parsed.log) {
                         if (parsed.log.includes("PLAY [")) {
-                            consoleOutput.innerText = ""; // Pulisce i log iniziali non appena inizia il play reale
+                            consoleOutput.innerText = "";
                         }
                         consoleOutput.innerText += parsed.log;
                         consoleOutput.scrollTop = consoleOutput.scrollHeight;
                     }
 
                     if (parsed.success === true) {
-                        btn.innerText = "Completato";
-                        btn.style.backgroundColor = '#9ece6a';
-                        btn.style.color = '#1a1b26';
-                        document.getElementById('btn-next').style.display = 'inline-block';
-                        document.getElementById('btn-next').disabled = false;
+                        btn.innerText = "Completato ✔️";
+                        btn.classList.remove('btn-primary');
+                        btn.classList.add('btn-secondary');
+                        
+                        const btnNext = document.getElementById('btn-next');
+                        if (btnNext) {
+                            btnNext.classList.remove('hidden');
+                            btnNext.disabled = false;
+                        }
                     }
                 } catch (e) {
                     console.error("Errore nel parsing del log (JSON):", e, line);
@@ -183,6 +195,7 @@ async function runNFSSetup() {
         }
     } catch (error) { 
         consoleOutput.innerText += "\n❌ Errore di rete durante lo streaming dei log."; 
-        btn.innerText = "Errore"; 
+        btn.innerText = "Errore di Rete"; 
+        btn.disabled = false;
     }
 }

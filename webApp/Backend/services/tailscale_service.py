@@ -2,6 +2,7 @@ import subprocess
 import os
 import json
 from daos.tailscale_dao import TailscaleDAO
+from services.inventory_service import InventoryService
 
 class TailscaleService:
     def __init__(self):
@@ -13,27 +14,10 @@ class TailscaleService:
 
     def execute_setup_stream(self, pve_ip):
         # Creazione dinamica dell'inventory Ansible per agganciare gli IP corretti
-        inventory_path = os.path.abspath(os.path.join(self.scripts_path, "..", "inventory.ini"))
-        vars_path = os.path.abspath(os.path.join(self.scripts_path, "..", "..", "vars.yml"))
-        
-        lxc_ip = None
-        try:
-            with open(vars_path, 'r') as f:
-                for line in f:
-                    if line.startswith('lxc_ip:'):
-                        lxc_ip = line.split(':', 1)[1].strip().strip('"').strip("'").split('/')[0]
-                        break
-        except Exception as e:
-            yield json.dumps({"success": False, "log": f"\n❌ Errore durante la lettura del file di configurazione vars.yml: {str(e)}\n"}) + "\n"
+        inventory_path = InventoryService.generate_inventory(pve_ip)
+        if not inventory_path:
+            yield json.dumps({"success": False, "log": "\n❌ Errore durante la generazione dell'inventory Ansible centralizzato. Assicurati che il file vars.yml esista.\n"}) + "\n"
             return
-            
-        if not lxc_ip:
-            yield json.dumps({"success": False, "log": "\n❌ Errore: L'IP del container LXC non è stato trovato. Assicurati di aver salvato correttamente la configurazione nello step precedente.\n"}) + "\n"
-            return
-
-        with open(inventory_path, 'w') as f:
-            f.write(f"[proxmox]\nproxmox ansible_host={pve_ip} ansible_user=root ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10'\n\n")
-            f.write(f"[tailscale_lxc]\ntailscale_lxc ansible_host={lxc_ip} ansible_user=root ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10'\n")
 
         # Eseguiamo i 4 script in sequenza
         playbooks = ["0_setup_auth.yml", "1_create_lxc.yml", "2_install_tailscale.yml", "3_setup_local_pc.yml"]
