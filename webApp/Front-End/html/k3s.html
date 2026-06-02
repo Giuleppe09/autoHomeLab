@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>HomeLab Manager - Configurazione K3s & NFS</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        #config-section {
+            display: flex;
+            flex-direction: row;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        #config-section fieldset {
+            flex: 1;
+            min-width: 250px;
+        }
+        /* Stile Tooltip Interattivo (Puro CSS) */
+        .info-icon {
+            display: inline-block;
+            background: #414868;
+            color: #a9b1d6;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            text-align: center;
+            font-size: 11px;
+            line-height: 16px;
+            cursor: help;
+            margin-left: 8px;
+            position: relative;
+            font-weight: bold;
+        }
+        .info-icon:hover::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 130%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1f2335;
+            color: #c0caf5;
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid #414868;
+            white-space: pre-wrap;
+            width: max-content;
+            max-width: 260px;
+            z-index: 100;
+            font-size: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            text-align: left;
+        }
+        #console-output {
+            background-color: #000;
+            color: #0f0;
+            font-family: monospace;
+            padding: 15px;
+            height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            border-radius: 5px;
+            margin-top: 20px;
+            border: 1px solid #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Configurazione Cluster K3s</h1>
+        <p>Definisci gli indirizzi e le risorse per le Virtual Machines dell'Orchestratore.</p>
+
+        <!-- Sezione Form -->
+        <div id="config-section">
+        <fieldset>
+            <legend>Rete LAN Base</legend>
+            <div class="form-group">
+                <label for="gateway">Gateway LAN
+                    <span class="info-icon" data-tooltip="L'indirizzo IP del tuo router domestico (es. 192.168.1.1).">?</span>
+                </label>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="gateway" value="192.168.1.1" oninput="enableK3sScan()" style="flex: 1;">
+                    <button id="btn-scan-k3s" type="button" onclick="scanFreeIPsK3s()">🔍 Trova IP</button>
+                </div>
+            </div>
+        </fieldset>
+
+        <fieldset>
+            <legend>Compute Layer (Virtual Machines)</legend>
+            <div class="form-group">
+                <label for="k3s_server_ip">Indirizzo IP K3s Server (Control Plane)
+                    <span class="info-icon" data-tooltip="L'IP statico della VM cervello. Gestirà Kubernetes e il database SQLite.">?</span>
+                </label>
+                <input type="text" id="k3s_server_ip" placeholder="es. 192.168.1.225">
+            </div>
+            <div class="form-group">
+                <label for="k3s_agent_ip">Indirizzo IP K3s Agent (Worker)
+                    <span class="info-icon" data-tooltip="L'IP statico della VM muscolo. È qui che verranno eseguiti materialmente i Pod e i tuoi servizi (Nextcloud, ecc.).">?</span>
+                </label>
+                <input type="text" id="k3s_agent_ip" placeholder="es. 192.168.1.226">
+            </div>
+            <div class="form-group">
+                <label for="k3s_user">Utente Nodi K3s (Cloud-Init)
+                    <span class="info-icon" data-tooltip="Nome utente che verrà auto-configurato sulle macchine virtuali per permetterti l'accesso tramite SSH.">?</span>
+                </label>
+                <input type="text" id="k3s_user" value="kubeuser">
+            </div>
+            <div class="form-group">
+                <label for="k3s_password">Password Utente Nodi
+                    <span class="info-icon" data-tooltip="Password associata all'utente. Verrà iniettata da Ansible tramite il drive virtuale di Cloud-init.">?</span>
+                </label>
+                <input type="password" id="k3s_password" placeholder="Inserisci una password sicura">
+            </div>
+        </fieldset>
+
+        <div style="width: 100%; display: flex; justify-content: flex-end; margin-top: 15px;">
+            <button onclick="saveK3sConfig()" id="btn-salva">Salva e Procedi</button>
+        </div>
+        </div>
+
+        <!-- Sezione Setup Console (inizialmente nascosta) -->
+        <div id="setup-section" class="hidden">
+            <h2>Deploy K3s Server & Agent</h2>
+            <p>I parametri sono stati salvati. Clicca il bottone per generare il template Ubuntu Cloud-Init e fare il provisioning delle Virtual Machines.</p>
+
+            <button id="btn-run" onclick="runK3sSetup()">🚀 Avvia Setup K3s</button>
+            <button id="btn-next" onclick="window.location.href='/'" disabled style="display: none; margin-top: 20px;">Torna alla Home</button>
+
+            <div id="console-output" class="hidden">In attesa di avviare l'installazione...</div>
+        </div>
+
+        <!-- Modale Recap (Riutilizza la tua classe CSS) -->
+        <div id="recap-modal" class="hidden modal">
+            <div class="modal-content">
+                <h2>Riepilogo Dati K3s</h2>
+                <pre id="recap-details"></pre>
+                <button onclick="confermaESalvaK3s()" id="btn-conferma">Conferma e Salva</button>
+                <button onclick="chiudiRecap()">Annulla</button>
+            </div>
+        </div>
+    </div>
+    <script src="/static/js/k3s.js"></script>
+</body>
+</html>

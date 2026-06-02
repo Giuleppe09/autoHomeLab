@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configurazione - HomeLab Manager</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>⚙️ Configurazione Parametri</h1>
+            <p>Inserisci i dati per l'automazione</p>
+        </header>
+
+        <section class="card">
+            <form id="config-form" onsubmit="event.preventDefault(); saveConfig();">
+                
+                <!-- Parametri Proxmox -->
+                <fieldset>
+                    <legend>Parametri Sistema Proxmox</legend>
+                    <div class="form-group">
+                        <label for="lxc_template_storage">
+                            Storage Template 
+                            <span class="info-icon" tabindex="0">ℹ️
+                                <span class="tooltip-text">Lo storage dedicato al download dei template OS. Solitamente è 'local'.</span>
+                            </span>
+                        </label>
+                        <select id="lxc_template_storage" required>
+                            <option value="">Seleziona Storage...</option>
+                            {% for ts in template_storages %}
+                            <option value="{{ ts }}" {% if ts == 'local' %}selected{% endif %}>{{ ts }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="lxc_disk_storage">
+                            Storage Disco LXC 
+                            <span class="info-icon" tabindex="0">ℹ️
+                                <span class="tooltip-text">Lo storage su cui creare il disco virtuale. Solitamente è 'local-lvm'.</span>
+                            </span>
+                        </label>
+                        <select id="lxc_disk_storage" required>
+                            <option value="">Seleziona Storage...</option>
+                            {% for ds in disk_storages %}
+                            <option value="{{ ds }}" {% if ds == 'local-lvm' %}selected{% endif %}>{{ ds }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </fieldset>
+
+                <!-- Parametri Rete Container -->
+                <fieldset>
+                    <legend>Parametri Rete Gateway</legend>
+                    <div class="form-group">
+                        <label for="lxc_gw">
+                            Gateway di Rete (Router) 
+                            <span class="info-icon" tabindex="0">ℹ️
+                                <span class="tooltip-text">L'indirizzo IP del tuo Router di casa, senza maschera (es. 192.168.1.1).</span>
+                            </span>
+                        </label>
+                        <input type="text" id="lxc_gw" placeholder="192.168.1.1" required oninput="enableScan()">
+                    </div>
+                    <div class="form-group">
+                        <label for="lxc_ip">
+                            IP Gateway LXC 
+                            <span class="info-icon" tabindex="0">ℹ️
+                                <span class="tooltip-text">IP statico per il Gateway, fuori dal DHCP del router. Includi la maschera (es. 192.168.1.16/24).</span>
+                            </span>
+                        </label>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="text" id="lxc_ip" placeholder="192.168.1.16/24" list="free-ips" required style="flex: 1;">
+                            <datalist id="free-ips"></datalist>
+                            <button type="button" id="btn-scan" onclick="scanFreeIPs()" class="btn-secondary" style="padding: 0 15px;" disabled>🔍 Cerca</button>
+                        </div>
+                    </div>
+                </fieldset>
+
+                <!-- Segreti Tailscale -->
+                <fieldset>
+                    <legend>Credenziali Tailscale</legend>
+                    <div class="form-group">
+                        <label for="ts_auth">
+                            Auth Key 
+                            <span class="info-icon" tabindex="0">ℹ️
+                                <span class="tooltip-text">Auth Key di Tailscale (Da creare su login.tailscale.com, spunta 'Reusable'). Inizia con tskey-auth-...</span>
+                            </span>
+                        </label>
+                        <input type="password" id="ts_auth" placeholder="tskey-auth-..." required>
+                    </div>
+                    <div class="form-group">
+                        <label for="ts_api">
+                            API Key 
+                            <span class="info-icon" tabindex="0">ℹ️
+                                <span class="tooltip-text">API Access Token (per approvare le rotte). Inizia con tskey-api-...</span>
+                            </span>
+                        </label>
+                        <input type="password" id="ts_api" placeholder="tskey-api-..." required>
+                    </div>
+                    <div class="form-group">
+                        <label for="local_sudo_pass">Password Sudo (PC Locale)</label>
+                            <input type="password" id="local_sudo_pass" name="local_sudo_pass" placeholder="Inserisci la password di root locale" required>
+                    </div>
+
+
+
+
+                </fieldset>
+
+                <button type="submit" class="btn-primary">Salva e Procedi</button>
+            </form>
+        </section>
+    </div>
+
+    <!-- Modale per il Recap -->
+    <div id="recap-modal" class="modal hidden">
+        <div class="modal-content card">
+            <h2>📝 Recap Configurazione</h2>
+            <p>Verifica i dati inseriti prima di procedere con il salvataggio:</p>
+            <pre id="recap-details" class="recap-box"></pre>
+            <div class="actions" style="display: flex; gap: 10px; margin-top: 20px;">
+                <button type="button" onclick="chiudiRecap()" class="btn-secondary" style="flex: 1;">Modifica Dati</button>
+                <button type="button" id="btn-conferma" onclick="confermaESalva()" class="btn-primary" style="flex: 1;">Conferma e Salva</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/config.js') }}"></script>
+</body>
+</html>

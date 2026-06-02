@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HomeLab Manager - Setup Tailscale</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏠 HomeLab Manager</h1>
+            <p>Automazione e Gestione Infrastruttura</p>
+        </header>
+
+        <!-- Step 2: Tailscale Execution -->
+        <section id="tailscale-section" class="card">
+            <div class="step-badge">Step 1</div>
+            <h2>Configurazione Tailscale VPN</h2>
+            <p>Il primo passo è creare un Gateway VPN su Proxmox per accedere alla tua LAN ovunque.</p>
+
+            <div class="actions">
+                <button onclick="runTailscaleSetup()" id="setup-btn" class="btn-primary">Avvia Setup Ansible</button>
+            </div>
+
+            <div id="console-output" class="console hidden"></div>
+        </section>
+    </div>
+    <script src="{{ url_for('static', filename='js/tailscale.js') }}"></script>
+</body>
+</html>

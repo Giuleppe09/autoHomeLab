@@ -1,0 +1,43 @@
+---
+- name: Setup di Tailscale sulla Control Station
+  hosts: localhost
+  connection: local
+  become: yes 
+  gather_facts: true
+  vars_files:
+    - "../../vars.yml"
+    - "../../secrets.yml"
+
+  tasks:
+    # --- FASE 1: PREPARAZIONE DEL PC LOCALE ---
+    - name: Aggiorna la cache APT e installa curl
+      ansible.builtin.apt:
+        name: curl
+        state: present
+        update_cache: yes
+
+    - name: Verifica se Tailscale e' gia' installato sul PC locale
+      ansible.builtin.command: which tailscale
+      register: tailscale_installed
+      failed_when: false
+      changed_when: false
+
+    - name: Installa Tailscale (se mancante)
+      ansible.builtin.shell: curl -fsSL https://tailscale.com/install.sh | sh
+      when: tailscale_installed.rc != 0
+
+    # --- FASE 2: ATTIVAZIONE E ROUTING (CON CONTROLLO STATO) ---
+    - name: Verifica se il PC locale e' gia' connesso a Tailscale
+      ansible.builtin.command: tailscale status
+      register: ts_local_status
+      failed_when: false
+      changed_when: false
+
+    - name: Avvia Tailscale e accetta le rotte (Subnet Routing)
+      ansible.builtin.command: >
+        tailscale up 
+        --authkey={{ tailscale_auth_key }} 
+        --accept-routes
+      register: tailscale_up
+      when: ts_local_status.rc != 0 or 'Logged out' in ts_local_status.stdout
+      changed_when: "'Success' in tailscale_up.stdout or tailscale_up.rc == 0"

@@ -1,0 +1,61 @@
+---
+- name: Fase 0 - Preparazione Template Cloud-Init Ubuntu 24.04
+  hosts: proxmox
+  gather_facts: false
+  vars_files:
+    - "../../vars.yml"
+    - "../../secrets.yml"
+  vars:
+    template_name: "ubuntu-2404-cloudinit"
+    ubuntu_image_url: "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"
+    image_dest: "/tmp/ubuntu-2404-cloudimg.img"
+    storage_pool: "local-lvm"
+
+  tasks:
+    - name: Verifica se il template esiste gia' su Proxmox (ricerca per nome)
+      ansible.builtin.shell: "qm list | awk '{print $2}' | grep -x '{{ template_name }}'"
+      register: template_exists
+      failed_when: false
+      changed_when: false
+
+    - name: Ottieni il prossimo VMID disponibile da Proxmox
+      ansible.builtin.command: pvesh get /cluster/nextid
+      register: nextid_output
+      when: template_exists.rc != 0
+      changed_when: false
+
+    - name: Salva il nuovo VMID in una variabile
+      ansible.builtin.set_fact:
+        template_vmid: "{{ nextid_output.stdout }}"
+      when: template_exists.rc != 0
+
+    - name: Scarica l'immagine Cloud di Ubuntu 24.04 (Solo se il template non esiste)
+      ansible.builtin.get_url:
+        url: "{{ ubuntu_image_url }}"
+        dest: "{{ image_dest }}"
+        mode: '0644'
+      when: template_exists.rc != 0
+
+    - name: Crea la VM base per il template
+      ansible.builtin.command: >
+        qm create {{ template_vmid }} --name {{ template_name }} --memory 2048 --cores 2 --net0 virtio,bridge=vmbr0
+      when: template_exists.rc != 0
+
+    - name: Importa il file .img nello storage di Proxmox
+      ansible.builtin.command: >
+        qm importdisk {{ template_vmid }} {{ image_dest }} {{ storage_pool }}
+      when: template_exists.rc != 0
+
+    - name: Configura l'hardware della VM (SCSI, Cloud-Init, Boot)
+      ansible.builtin.command: >
+        qm set {{ template_vmid }} 
+        --scsihw virtio-scsi-pci 
+        --scsi0 {{ storage_pool }}:vm-{{ template_vmid }}-disk-0 
+        --ide2 {{ storage_pool }}:cloudinit 
+        --boot c --bootdisk scsi0 
+        --serial0 socket --vga serial0
+      when: template_exists.rc != 0
+
+    - name: Converti la VM standard in un Template Proxmox
+      ansible.builtin.command: qm template {{ template_vmid }}
+      when: template_exists.rc != 0

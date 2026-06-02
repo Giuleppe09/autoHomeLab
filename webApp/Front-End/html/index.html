@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HomeLab Manager</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏠 HomeLab Manager</h1>
+            <p>Automazione e Gestione Infrastruttura</p>
+        </header>
+
+        <!-- Step 0: Welcome -->
+        <section id="welcome-section" class="card">
+            <h2>Benvenuto!</h2>
+            <p>Questo è il Pannello di configurazione del tuo HomeLab.</p>
+            
+            <div class="form-group" style="text-align: left; margin: 25px 0;">
+                <label for="pve_ip_init">IP Server Proxmox</label>
+                <input type="text" id="pve_ip_init" placeholder="es. 192.168.1.222" required>
+            </div>
+
+            <p id="init-status" style="font-size: 0.9em; min-height: 20px; font-weight: bold;"></p>
+
+            <button id="btn-start" onclick="startSetup()" class="btn-primary">Connetti e Inizia</button>
+        </section>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/index.js') }}"></script>
+</body>
+</html>

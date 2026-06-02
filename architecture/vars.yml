@@ -1,0 +1,16 @@
+proxmox_api_host: 192.168.1.222
+proxmox_api_user: ansible@pve
+proxmox_api_token_id: provisioner
+lxc_vmid: 101
+lxc_hostname: tailscale-gateway
+lxc_ip: 192.168.1.201/24
+lxc_gw: 192.168.1.1
+lxc_template_storage: Storage-1TB
+lxc_disk_storage: local-lvm
+nfs_vmid: null
+nfs_hostname: null
+nfs_ip: 192.168.1.202/24
+nfs_gw: null
+nfs_network: 192.168.1.0/24
+host_mount_path: local-lvm
+lxc_mount_path: /mnt/hdd_data

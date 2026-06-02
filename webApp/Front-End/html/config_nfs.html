@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configurazione NFS - HomeLab Manager</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container" id="config-section">
+        <header>
+            <h1>💽 Configurazione Storage (NFS)</h1>
+            <p>Definisci gli indirizzi e le risorse per il Datastore Condiviso sulla tua rete.</p>
+        </header>
+
+        <section class="card">
+            <form id="nfs-form" onsubmit="event.preventDefault(); saveNFSConfig();">
+                
+                <fieldset>
+                    <legend>Rete LAN Base</legend>
+                    <div class="form-group">
+                        <label for="gateway">
+                            Gateway LAN 
+                            <span class="info-icon" tabindex="0">ℹ️
+                                <span class="tooltip-text">L'indirizzo IP del tuo router domestico (es. 192.168.1.1).</span>
+                            </span>
+                        </label>
+                        <input type="text" id="gateway" value="192.168.1.1" required oninput="enableNFSScan()">
+                    </div>
+                    <div class="form-group">
+                        <label for="nfs_network">
+                            Subnet LAN K3s (CIDR per NFS) 
+                            <span class="info-icon" tabindex="0">ℹ️
+                                <span class="tooltip-text">La sottorete (es. 192.168.1.0/24) che verrà autorizzata ad accedere al volume di Storage NFS.</span>
+                            </span>
+                        </label>
+                        <input type="text" id="nfs_network" value="192.168.1.0/24" required>
+                    </div>
+                </fieldset>
+
+                <fieldset>
+                    <legend>Storage Layer (NFS)</legend>
+                    <div class="form-group">
+                        <label for="nfs_ip">
+                            Indirizzo IP LXC NFS 
+                            <span class="info-icon" tabindex="0">ℹ️
+                                <span class="tooltip-text">L'IP statico del container che fungerà da Server Datastore. Usa il tasto 'Cerca' per trovare IP liberi.</span>
+                            </span>
+                        </label>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="text" id="nfs_ip" placeholder="Es. 192.168.1.200/24" required style="flex: 1;" class="form-control">
+                            <button type="button" id="btn-scan-nfs" onclick="scanFreeIPsNFS()" class="btn-secondary" style="padding: 0 15px;">🔍 Cerca</button>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="nfs_template_storage">
+                            Storage Template (Immagine OS)
+                            <span class="info-icon" tabindex="0">ℹ️
+                                <span class="tooltip-text">Lo storage dove risiede (o verrà scaricato) il template di Ubuntu per il container. Solitamente 'local'.</span>
+                            </span>
+                        </label>
+                        <select id="nfs_template_storage" class="form-control" required>
+                            <option value="">Seleziona Storage...</option>
+                            {% for ts in template_storages %}
+                            <option value="{{ ts }}">{{ ts }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="host_mount_path">
+                            Storage Disco Fisico (Dati)
+                            <span class="info-icon" tabindex="0">ℹ️
+                                <span class="tooltip-text">Il pool di storage su Proxmox che verrà montato nel container per contenere i file dell'NFS.</span>
+                            </span>
+                        </label>
+                        <select id="host_mount_path" class="form-control" required>
+                            <option value="">Seleziona Storage...</option>
+                            {% for storage in disk_storages %}
+                            <option value="{{ storage }}">{{ storage }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="lxc_mount_path">
+                            Mount Point Interno (LXC) 
+                            <span class="info-icon" tabindex="0">ℹ️
+                                <span class="tooltip-text">Il percorso all'interno del container NFS in cui verrà 'montato' il disco fisico.</span>
+                            </span>
+                        </label>
+                        <input type="text" id="lxc_mount_path" value="/mnt/hdd_data" required>
+                    </div>
+                </fieldset>
+
+                <div style="width: 100%; display: flex; justify-content: flex-end; margin-top: 15px;">
+                    <button type="submit" class="btn-primary" id="btn-salva">Salva e Procedi</button>
+                </div>
+            </form>
+        </section>
+    </div>
+
+    <div class="container hidden" id="setup-section">
+        <header>
+            <h1>🚀 Deploy NFS Server</h1>
+            <p>I parametri sono stati salvati. Lancia il playbook Ansible per configurare il container.</p>
+        </header>
+        <section class="card" style="text-align: center;">
+            <button id="btn-run" class="btn-primary" onclick="runNFSSetup()">Avvia Setup Storage</button>
+            <button id="btn-next" class="btn-secondary hidden" onclick="window.location.href='/k3s'" disabled style="margin-left: 10px;">Prosegui a K3s</button>
+            
+            <div id="console-output" class="hidden" style="background-color: #000; color: #0f0; font-family: monospace; padding: 15px; height: 400px; overflow-y: auto; text-align: left; border-radius: 5px; margin-top: 20px;">
+                In attesa di avviare l'installazione...
+            </div>
+        </section>
+    </div>
+
+    <div id="recap-modal" class="modal hidden">
+        <div class="modal-content card">
+            <h2>📝 Riepilogo Dati NFS</h2>
+            <p>Verifica i dati inseriti prima di procedere con l'installazione:</p>
+            <pre id="recap-details" class="recap-box" style="background: #1a1b26; color: #a9b1d6; padding: 15px; border-radius: 8px; overflow-x: auto; text-align: left;"></pre>
+            <div class="actions" style="display: flex; gap: 10px; margin-top: 20px;">
+                <button type="button" onclick="chiudiRecap()" class="btn-secondary" style="flex: 1;">Modifica Dati</button>
+                <button type="button" id="btn-conferma" onclick="confermaESalvaNFS()" class="btn-primary" style="flex: 1;">Conferma e Salva</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/nfs.js') }}"></script>
+</body>
+</html>

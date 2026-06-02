@@ -1,0 +1,107 @@
+---
+- name: Fase 2 - Provisioning K3s VMs (Server & Agent) tramite Cloud-Init
+  hosts: proxmox
+  gather_facts: false
+  vars_files:
+    - "../../vars.yml"
+    - "../../secrets.yml"
+  vars:
+    template_name: "ubuntu-2404-cloudinit"
+
+  tasks:
+    - name: Ricava il VMID del template tramite il nome
+      ansible.builtin.shell: "qm list | awk '/{{ template_name }}/ {print $1}'"
+      register: template_vmid_cmd
+      changed_when: false
+      
+    - name: Verifica che il template esista
+      ansible.builtin.fail:
+        msg: "Template '{{ template_name }}' non trovato. Esegui prima la Fase 0."
+      when: template_vmid_cmd.stdout == ""
+
+    - name: Copia la chiave SSH pubblica di Ansible sull'host Proxmox
+      ansible.builtin.copy:
+        content: "{{ lookup('file', '~/.ssh/id_ansible.pub') }}"
+        dest: "/tmp/id_ansible.pub"
+        mode: '0644'
+
+    # =========================================================================
+    # K3S SERVER (CONTROL PLANE) - 2 Core / 2 GB RAM
+    # =========================================================================
+    - name: Controlla se la VM K3s-Server esiste gia'
+      ansible.builtin.command: qm status {{ k3s_server_vmid }}
+      register: server_exists
+      failed_when: false
+      changed_when: false
+
+    - name: Clona il template per K3s-Server
+      ansible.builtin.command: >
+        qm clone {{ template_vmid_cmd.stdout }} {{ k3s_server_vmid }} --name {{ k3s_server_hostname }} --full 1
+      when: server_exists.rc != 0
+
+    - name: Configura Risorse e Cloud-Init per K3s-Server (Iniettiamo IP, Utente, Password)
+      ansible.builtin.command: >
+        qm set {{ k3s_server_vmid }}
+        --cores 2
+        --memory 2048
+        --ciuser {{ k3s_user }}
+        --cipassword '{{ k3s_password }}'
+        --ipconfig0 ip={{ k3s_server_ip }},gw={{ k3s_server_gw }}
+        --sshkeys /tmp/id_ansible.pub
+      when: server_exists.rc != 0
+
+    - name: Ridimensiona il disco OS per K3s-Server (Aggiungiamo 18GB ai 2GB base)
+      ansible.builtin.command: qm resize {{ k3s_server_vmid }} scsi0 +18G
+      when: server_exists.rc != 0
+
+    - name: Avvia la VM K3s-Server
+      ansible.builtin.command: qm start {{ k3s_server_vmid }}
+      when: server_exists.rc != 0
+
+    # =========================================================================
+    # K3S AGENT (WORKER NODE) - 4 Core / 4 GB RAM
+    # =========================================================================
+    - name: Controlla se la VM K3s-Agent esiste gia'
+      ansible.builtin.command: qm status {{ k3s_agent_vmid }}
+      register: agent_exists
+      failed_when: false
+      changed_when: false
+
+    - name: Clona il template per K3s-Agent
+      ansible.builtin.command: >
+        qm clone {{ template_vmid_cmd.stdout }} {{ k3s_agent_vmid }} --name {{ k3s_agent_hostname }} --full 1
+      when: agent_exists.rc != 0
+
+    - name: Configura Risorse e Cloud-Init per K3s-Agent (Iniettiamo IP, Utente, Password)
+      ansible.builtin.command: >
+        qm set {{ k3s_agent_vmid }}
+        --cores 4
+        --memory 4096
+        --ciuser {{ k3s_user }}
+        --cipassword '{{ k3s_password }}'
+        --ipconfig0 ip={{ k3s_agent_ip }},gw={{ k3s_agent_gw }}
+        --sshkeys /tmp/id_ansible.pub
+      when: agent_exists.rc != 0
+
+    - name: Ridimensiona il disco OS per K3s-Agent (Aggiungiamo 18GB ai 2GB base)
+      ansible.builtin.command: qm resize {{ k3s_agent_vmid }} scsi0 +18G
+      when: agent_exists.rc != 0
+
+    - name: Avvia la VM K3s-Agent
+      ansible.builtin.command: qm start {{ k3s_agent_vmid }}
+      when: agent_exists.rc != 0
+
+    # =========================================================================
+    # POST-BOOT - Aspettiamo che il Cloud-init finisca e accenda l'SSH
+    # =========================================================================
+    - name: Attendi che K3s-Server e K3s-Agent siano pronti via SSH (Cloud-Init in corso...)
+      delegate_to: localhost
+      ansible.builtin.wait_for:
+        host: "{{ item | split('/') | first }}"
+        port: 22
+        delay: 15
+        timeout: 300
+        state: started
+      loop:
+        - "{{ k3s_server_ip }}"
+        - "{{ k3s_agent_ip }}"

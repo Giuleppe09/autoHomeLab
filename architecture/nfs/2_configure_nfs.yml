@@ -1,0 +1,61 @@
+---
+- name: Configurazione del servizio NFS Server
+  hosts: nfs_lxc
+  gather_facts: false
+  vars_files:
+    - "../../vars.yml"
+    - "../../secrets.yml"
+  vars:
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10'
+
+  tasks:
+    - name: Attendi che il container sia completamente pronto
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+        sleep: 5
+
+    # --- FASE 1: SSH E SICUREZZA (OPZIONALE PER ANSIBLE, MA UTILE PER DEBUG MANUALE) ---
+    - name: Abilita il login root tramite password nel demone SSH
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PermitRootLogin'
+        line: 'PermitRootLogin yes' #
+      notify: Restart SSH
+
+    # --- FASE 2: INSTALLAZIONE PACCHETTI ---
+    - name: Aggiorna la cache di APT e installa il demone NFS
+      ansible.builtin.apt:
+        name: nfs-kernel-server #
+        state: present
+        update_cache: yes
+
+    # --- FASE 3: PERMESSI E CONFIGURAZIONE ESPORTAZIONI ---
+    - name: Applica i permessi aperti (777) al mount point per supportare K3s (RWX)
+      ansible.builtin.file:
+        path: "{{ nfs_lxc_mount_path }}"
+        state: directory
+        mode: '0777' #
+
+    - name: Configura la regola di esportazione nel file /etc/exports
+      ansible.builtin.lineinfile:
+        path: /etc/exports
+        regexp: "^{{ nfs_lxc_mount_path | regex_escape() }}\\s"
+        line: "{{ nfs_lxc_mount_path }} {{ nfs_allowed_subnet }}(rw,sync,no_subtree_check,no_root_squash)" #
+        create: yes
+      notify: Reload ExportFS
+
+    # --- FASE 4: ABILITAZIONE SERVIZI ---
+    - name: Assicurati che il servizio NFS Server sia abilitato e in esecuzione
+      ansible.builtin.systemd:
+        name: nfs-kernel-server #
+        enabled: yes
+        state: started
+
+  handlers:
+    - name: Restart SSH
+      ansible.builtin.systemd:
+        name: ssh
+        state: restarted
+
+    - name: Reload ExportFS
+      ansible.builtin.command: exportfs -ra #
