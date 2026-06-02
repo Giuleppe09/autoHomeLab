@@ -69,6 +69,21 @@
                     </div>
 
                     <div class="form-group">
+                        <label for="nfs_disk_storage">
+                            Storage Disco LXC (Root)
+                            <span class="info-icon" tabindex="0">ℹ️
+                                <span class="tooltip-text">Lo storage in cui verrà creato il disco virtuale del container NFS. Solitamente è 'local-lvm'.</span>
+                            </span>
+                        </label>
+                        <select id="nfs_disk_storage" class="form-control" required>
+                            <option value="">Seleziona Storage...</option>
+                            {% for storage in disk_storages %}
+                            <option value="{{ storage }}">{{ storage }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="form-group">
                         <label for="host_mount_path">
                             Storage Disco Fisico (Dati)
                             <span class="info-icon" tabindex="0">ℹ️

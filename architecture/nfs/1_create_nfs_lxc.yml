@@ -3,10 +3,17 @@
   hosts: proxmox
   gather_facts: false
   vars_files:
-    - "../../vars.yml"
-    - "../../secrets.yml"
+    - "../vars.yml"
+    - "../secrets.yml"
 
   tasks:
+    # --- FASE 1: AUTO-DISCOVERY STORAGE ---
+    # QUESTO È IL TASK MANCANTE CHE CAUSAVA L'ERRORE:
+    - name: Interroga Proxmox per individuare gli storage abilitati ai Template (vztmpl)
+      ansible.builtin.shell: "pvesm status -content vztmpl | awk 'NR>1 {print $1}'"
+      register: available_template_storage
+      changed_when: false
+
     - name: Valida l'esistenza dello storage per i Template
       ansible.builtin.fail:
         msg: "❌ ERRORE: Lo storage '{{ nfs_template_storage | trim }}' non esiste o non supporta i template."
@@ -20,10 +27,33 @@
     - name: Valida l'esistenza dello storage per i Dischi LXC
       delegate_to: localhost
       ansible.builtin.fail:
-        msg: "❌ ERRORE: Lo storage '{{ nfs_template_storage | trim }}' non esiste o non supporta i container."
-      when: nfs_template_storage | trim not in available_disk_storage.stdout.split('\n')
+        msg: "❌ ERRORE: Lo storage '{{ nfs_disk_storage | trim }}' non esiste o non supporta i container."
+      when: nfs_disk_storage | trim not in available_disk_storage.stdout.split('\n')
 
     # --- FASE 2: DOWNLOAD TEMPLATE E CREAZIONE CONTAINER ---
+    
+    - name: Chiedi a Proxmox il prossimo VMID se non è già stato assegnato
+      ansible.builtin.command: pvesh get /cluster/nextid
+      register: pve_next_vmid
+      when: nfs_vmid is none or nfs_vmid == 'null' or nfs_vmid == ''
+      changed_when: false
+
+    - name: Sovrascrivi la variabile nfs_vmid in memoria
+      ansible.builtin.set_fact:
+        nfs_vmid: "{{ pve_next_vmid.stdout | trim }}"
+      when: pve_next_vmid.stdout is defined
+
+    - name: Aggiorna il file vars.yml in modo permanente con il nuovo VMID
+      delegate_to: localhost
+      ansible.builtin.lineinfile:
+        path: "../vars.yml"
+        regexp: '^nfs_vmid:'
+        line: "nfs_vmid: {{ nfs_vmid }}"
+      when: pve_next_vmid.stdout is defined
+
+    - name: Verifica se il template Ubuntu 24.04 e' gia' presente
+      ansible.builtin.shell: "pveam list {{ nfs_template_storage | trim }} | grep -q ubuntu-24.04-standard"
+      # ... resto del playbook invariato
     - name: Verifica se il template Ubuntu 24.04 e' gia' presente
       ansible.builtin.shell: "pveam list {{ nfs_template_storage | trim }} | grep -q ubuntu-24.04-standard"
       register: template_check
@@ -48,7 +78,7 @@
         ostemplate: "{{ nfs_template_storage | trim }}:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst"
         cores: 1 
         memory: 512 
-        disk: "{{ nfs_template_storage | trim }}:8" 
+        disk: "{{ nfs_disk_storage | trim }}:8" 
         unprivileged: false 
         pubkey: "{{ lookup('file', '~/.ssh/id_ansible.pub') }}"
         cmode: console

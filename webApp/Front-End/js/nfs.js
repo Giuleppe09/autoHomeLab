@@ -86,10 +86,10 @@ function saveNFSConfig() {
         nfs_network: document.getElementById('nfs_network').value.trim(),
         nfs_gw: document.getElementById('gateway').value.trim(),
         nfs_template_storage: document.getElementById('nfs_template_storage').value.trim(),
+        nfs_disk_storage: document.getElementById('nfs_disk_storage').value.trim(), // <--- AGGIUNTO
         host_mount_path: document.getElementById('host_mount_path').value.trim(),
         lxc_mount_path: document.getElementById('lxc_mount_path').value.trim()
     };
-
     // Validazione robusta dei formati di rete prima dell'invio (REGEX CORRETTA!)
     const ipCidrRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/([1-9]|[1-2][0-9]|3[0-2])$/;
     

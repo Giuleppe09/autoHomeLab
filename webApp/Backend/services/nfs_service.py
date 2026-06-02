@@ -3,6 +3,7 @@ import os
 import json
 import yaml
 from services.inventory_service import InventoryService
+from services.proxmox_service import ProxmoxService
 
 class NfsService:
     def __init__(self):
@@ -13,6 +14,22 @@ class NfsService:
         self.scripts_path = os.path.join(architecture_path, "nfs")
         self.vars_path = os.path.join(architecture_path, "vars.yml")
 
+    def get_available_storages(self, base_dir):
+        """Recupera gli storage disponibili leggendo il file JSON fisico senza usare la sessione."""
+        try:
+            info = ProxmoxService.read_storages(base_dir)
+            return {
+                'template_storages': info.get('template_storages', ['local']),
+                'disk_storages': info.get('disk_storages', ['local', 'local-lvm'])
+            }
+        except Exception as e:
+            print(f"Errore durante il recupero degli storage per NFS: {e}")
+            # Valori di fallback in caso il file non sia ancora stato generato
+            return {
+                'template_storages': ['local'],
+                'disk_storages': ['local', 'local-lvm']
+            }
+        
     def _get_proxmox_ip(self):
         """Metodo privato per recuperare l'IP da vars.yml"""
         try:
@@ -80,16 +97,19 @@ class NfsService:
                 with open(self.vars_path, 'r') as file:
                     vars_data = yaml.safe_load(file) or {}
             
-            # 2. Aggiorniamo il dizionario con i nuovi dati NFS
-            # Il frontend invia chiavi come 'nfs_ip', 'nfs_template_storage', ecc.
+            # 2. Aggiorniamo il dizionario con i nuovi dati NFS provenienti dal form
             for key, value in data.items():
                 vars_data[key] = value
                 
-            # 3. Scriviamo tutto di nuovo nel file vars.yml
+            # 3. 🔹 FORZATURA IN BACKEND: Iniettiamo i parametri strutturali NFS
+            vars_data['nfs_hostname'] = "nfs-server"
+            vars_data['nfs_vmid'] = None  # In YAML verrà scritto come: null
+                
+            # 4. Scriviamo tutto di nuovo nel file vars.yml
             with open(self.vars_path, 'w') as file:
                 yaml.safe_dump(vars_data, file, default_flow_style=False, sort_keys=False)
                 
-            print(f"Configurazione NFS salvata con successo in {self.vars_path}")
+            print(f"Configurazione NFS salvata con successo in {self.vars_path} (Hostname e VMID gestiti dal backend)")
             return True, "Configurazione salvata correttamente."
             
         except Exception as e:

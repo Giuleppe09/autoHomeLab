@@ -8,10 +8,11 @@ lxc_gw: 192.168.1.1
 lxc_template_storage: Storage-1TB
 lxc_disk_storage: local-lvm
 nfs_vmid: null
-nfs_hostname: null
+nfs_hostname: nfs-server
 nfs_ip: 192.168.1.202/24
 nfs_gw: 192.168.1.1
 nfs_network: 192.168.1.0/24
-host_mount_path: local
+host_mount_path: Storage-1TB
 lxc_mount_path: /mnt/hdd_data
-nfs_template_storage: local
+nfs_template_storage: Storage-1TB
+nfs_disk_storage: local-lvm
