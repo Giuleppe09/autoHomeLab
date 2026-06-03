@@ -4,8 +4,9 @@ from routes.tailscale_routes import tailscale_bp #Importa il Blueprint per le ro
 from routes.config_routes import config_bp #Importa il Blueprint per le rotte di configurazione
 from routes.k3s_routes import k3s_bp #Importa il Blueprint per le rotte di K3s
 from routes.nfs_routes import nfs_bp #Importa il Blueprint per le rotte di NFS
-from controllers.config_controller import ConfigController
-from controllers.nfs_controller import NfsController
+
+
+
 # Otteniamo il percorso assoluto della cartella Backend
 base_dir = os.path.dirname(os.path.abspath(__file__))
 # Puntiamo correttamente alle cartelle nel Front-End
@@ -36,17 +37,12 @@ def index():
         return "ERRORE: index.html non trovato in " + template_dir
     return render_template('index.html')
 
+#Da sistemare.
 @app.route('/config')
 def config_page():
     if not os.path.exists(os.path.join(template_dir, 'config.html')):
         return "ERRORE: config.html non trovato in " + template_dir
-        
-    # Recuperiamo gli storage trovati da Proxmox (o impostiamo dei fallback sicuri)
-    template_storages = session.get('template_storages', ['local'])
-    data = ConfigController.get_config_page_data()
-    return render_template('config.html', **data)
-
-    return render_template('config.html', template_storages=template_storages, disk_storages=disk_storages)
+    return render_template('config.html')
 
 @app.route('/tailscale')
 def tailscale_page():
@@ -56,8 +52,10 @@ def tailscale_page():
 
 @app.route('/nfs')
 def nfs_page():
-    # Tutta la logica di calcolo percorsi e recupero dati è delegata al Controller!
-    return NfsController.render_nfs_page()
+    if not os.path.exists(os.path.join(template_dir, 'config_nfs.html')):
+        return "ERRORE: config_nfs.html non trovato in " + template_dir
+    return render_template('config_nfs.html')
+
 @app.route('/k3s')
 def k3s_page():
     if not os.path.exists(os.path.join(template_dir, 'k3s.html')):
