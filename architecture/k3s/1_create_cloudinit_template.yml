@@ -18,17 +18,6 @@
       failed_when: false
       changed_when: false
 
-    - name: Ottieni il prossimo VMID disponibile da Proxmox
-      ansible.builtin.command: pvesh get /cluster/nextid
-      register: nextid_output
-      when: template_exists.rc != 0
-      changed_when: false
-
-    - name: Salva il nuovo VMID in una variabile
-      ansible.builtin.set_fact:
-        template_vmid: "{{ nextid_output.stdout }}"
-      when: template_exists.rc != 0
-
     - name: Scarica l'immagine Cloud di Ubuntu 24.04 (Solo se il template non esiste)
       ansible.builtin.get_url:
         url: "{{ ubuntu_image_url }}"
@@ -38,24 +27,24 @@
 
     - name: Crea la VM base per il template
       ansible.builtin.command: >
-        qm create {{ template_vmid }} --name {{ template_name }} --memory 2048 --cores 2 --net0 virtio,bridge=vmbr0
+        qm create 8000 --name {{ template_name }} --memory 2048 --cores 2 --net0 virtio,bridge=vmbr0
       when: template_exists.rc != 0
 
     - name: Importa il file .img nello storage di Proxmox
       ansible.builtin.command: >
-        qm importdisk {{ template_vmid }} {{ image_dest }} {{ storage_pool }}
+        qm importdisk 8000 {{ image_dest }} {{ storage_pool }}
       when: template_exists.rc != 0
 
     - name: Configura l'hardware della VM (SCSI, Cloud-Init, Boot)
       ansible.builtin.command: >
-        qm set {{ template_vmid }} 
+        qm set 8000 
         --scsihw virtio-scsi-pci 
-        --scsi0 {{ storage_pool }}:vm-{{ template_vmid }}-disk-0 
+        --scsi0 {{ storage_pool }}:vm-8000-disk-0 
         --ide2 {{ storage_pool }}:cloudinit 
         --boot c --bootdisk scsi0 
         --serial0 socket --vga serial0
       when: template_exists.rc != 0
 
     - name: Converti la VM standard in un Template Proxmox
-      ansible.builtin.command: qm template {{ template_vmid }}
+      ansible.builtin.command: qm template 8000
       when: template_exists.rc != 0

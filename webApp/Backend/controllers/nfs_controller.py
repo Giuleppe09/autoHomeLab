@@ -9,7 +9,6 @@ class NfsController:
     
     @staticmethod
     def save_nfs_config(request):
-        print("Ricevuta richiesta POST per il salvataggio della configurazione NFS")
         
         data = request.get_json(silent=True)
         if not data:

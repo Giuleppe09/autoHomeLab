@@ -39,7 +39,10 @@
                 </fieldset>
 
                 <fieldset>
-                    <legend>Storage Layer (NFS)</legend>
+                    <legend style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                        Storage Layer (NFS)
+                        <button type="button" class="btn-secondary" onclick="fetchStoragesNFS()" id="btn-fetch-storages-nfs" style="padding: 5px 15px; font-size: 0.85em; margin-left: 10px;">🔄 Cerca Storage su PVE</button>
+                    </legend>
                     <div class="form-group">
                         <label for="nfs_ip">
                             Indirizzo IP LXC NFS 
@@ -61,10 +64,7 @@
                             </span>
                         </label>
                         <select id="nfs_template_storage" class="form-control" required>
-                            <option value="">Seleziona Storage...</option>
-                            {% for ts in template_storages %}
-                            <option value="{{ ts }}">{{ ts }}</option>
-                            {% endfor %}
+                            <option value="">(Premi 'Cerca Storage su PVE' per popolare la lista)</option>
                         </select>
                     </div>
 
@@ -76,10 +76,7 @@
                             </span>
                         </label>
                         <select id="nfs_disk_storage" class="form-control" required>
-                            <option value="">Seleziona Storage...</option>
-                            {% for storage in disk_storages %}
-                            <option value="{{ storage }}">{{ storage }}</option>
-                            {% endfor %}
+                            <option value="">(Premi 'Cerca Storage su PVE' per popolare la lista)</option>
                         </select>
                     </div>
 
@@ -91,10 +88,7 @@
                             </span>
                         </label>
                         <select id="host_mount_path" class="form-control" required>
-                            <option value="">Seleziona Storage...</option>
-                            {% for storage in disk_storages %}
-                            <option value="{{ storage }}">{{ storage }}</option>
-                            {% endfor %}
+                            <option value="">(Premi 'Cerca Storage su PVE' per popolare la lista)</option>
                         </select>
                     </div>
 

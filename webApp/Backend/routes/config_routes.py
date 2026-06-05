@@ -1,6 +1,5 @@
 from flask import Blueprint, request
 from controllers.config_controller import ConfigController
-from controllers.nfs_controller import NfsController
 
 config_bp = Blueprint('config_bp', __name__)
 
@@ -8,10 +7,10 @@ config_bp = Blueprint('config_bp', __name__)
 def check_status():
     return ConfigController.check_status(request)
 
+# 🔹 Unica API centralizzata per gli storage
 @config_bp.route('/api/storages', methods=['GET'])
-def get_nfs_storages():
+def get_storages():
     return ConfigController.get_storages_api()
-
 
 @config_bp.route('/api/init_proxmox', methods=['POST'])
 def init_proxmox():

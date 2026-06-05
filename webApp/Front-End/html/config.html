@@ -16,9 +16,11 @@
         <section class="card">
             <form id="config-form" onsubmit="event.preventDefault(); saveConfig();">
                 
-                <!-- Parametri Proxmox -->
                 <fieldset>
-                    <legend>Parametri Sistema Proxmox</legend>
+                    <legend style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                        Parametri Sistema Proxmox
+                        <button type="button" class="btn-secondary" onclick="fetchStoragesConfig()" id="btn-fetch-storages-config" style="padding: 5px 15px; font-size: 0.85em; margin-left: 10px;">🔄 Cerca Storage su PVE</button>
+                    </legend>
                     <div class="form-group">
                         <label for="lxc_template_storage">
                             Storage Template 
@@ -26,11 +28,8 @@
                                 <span class="tooltip-text">Lo storage dedicato al download dei template OS. Solitamente è 'local'.</span>
                             </span>
                         </label>
-                        <select id="lxc_template_storage" required>
-                            <option value="">Seleziona Storage...</option>
-                            {% for ts in template_storages %}
-                            <option value="{{ ts }}" {% if ts == 'local' %}selected{% endif %}>{{ ts }}</option>
-                            {% endfor %}
+                        <select id="lxc_template_storage" class="form-control" required>
+                            <option value="">(Premi 'Cerca Storage su PVE' per popolare)</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -40,16 +39,12 @@
                                 <span class="tooltip-text">Lo storage su cui creare il disco virtuale. Solitamente è 'local-lvm'.</span>
                             </span>
                         </label>
-                        <select id="lxc_disk_storage" required>
-                            <option value="">Seleziona Storage...</option>
-                            {% for ds in disk_storages %}
-                            <option value="{{ ds }}" {% if ds == 'local-lvm' %}selected{% endif %}>{{ ds }}</option>
-                            {% endfor %}
+                        <select id="lxc_disk_storage" class="form-control" required>
+                            <option value="">(Premi 'Cerca Storage su PVE' per popolare)</option>
                         </select>
                     </div>
                 </fieldset>
 
-                <!-- Parametri Rete Container -->
                 <fieldset>
                     <legend>Parametri Rete Gateway</legend>
                     <div class="form-group">
@@ -65,18 +60,16 @@
                         <label for="lxc_ip">
                             IP Gateway LXC 
                             <span class="info-icon" tabindex="0">ℹ️
-                                <span class="tooltip-text">IP statico per il Gateway, fuori dal DHCP del router. Includi la maschera (es. 192.168.1.16/24).</span>
+                                <span class="tooltip-text">IP statico per il Gateway, fuori dal DHCP del router. Clicca su 'Cerca' per trovare IP liberi.</span>
                             </span>
                         </label>
                         <div style="display: flex; gap: 10px;">
-                            <input type="text" id="lxc_ip" placeholder="192.168.1.16/24" list="free-ips" required style="flex: 1;">
-                            <datalist id="free-ips"></datalist>
+                            <input type="text" id="lxc_ip" placeholder="192.168.1.16/24" required style="flex: 1;" class="form-control">
                             <button type="button" id="btn-scan" onclick="scanFreeIPs()" class="btn-secondary" style="padding: 0 15px;" disabled>🔍 Cerca</button>
                         </div>
                     </div>
                 </fieldset>
 
-                <!-- Segreti Tailscale -->
                 <fieldset>
                     <legend>Credenziali Tailscale</legend>
                     <div class="form-group">
@@ -99,25 +92,22 @@
                     </div>
                     <div class="form-group">
                         <label for="local_sudo_pass">Password Sudo (PC Locale)</label>
-                            <input type="password" id="local_sudo_pass" name="local_sudo_pass" placeholder="Inserisci la password di root locale" required>
+                        <input type="password" id="local_sudo_pass" name="local_sudo_pass" placeholder="Inserisci la password di root locale" required>
                     </div>
-
-
-
-
                 </fieldset>
 
-                <button type="submit" class="btn-primary">Salva e Procedi</button>
+                <div style="width: 100%; display: flex; justify-content: flex-end; margin-top: 15px;">
+                    <button type="submit" class="btn-primary" id="btn-salva">Salva e Procedi</button>
+                </div>
             </form>
         </section>
     </div>
 
-    <!-- Modale per il Recap -->
     <div id="recap-modal" class="modal hidden">
         <div class="modal-content card">
             <h2>📝 Recap Configurazione</h2>
             <p>Verifica i dati inseriti prima di procedere con il salvataggio:</p>
-            <pre id="recap-details" class="recap-box"></pre>
+            <pre id="recap-details" class="recap-box" style="background: #1a1b26; color: #a9b1d6; padding: 15px; border-radius: 8px; overflow-x: auto; text-align: left;"></pre>
             <div class="actions" style="display: flex; gap: 10px; margin-top: 20px;">
                 <button type="button" onclick="chiudiRecap()" class="btn-secondary" style="flex: 1;">Modifica Dati</button>
                 <button type="button" id="btn-conferma" onclick="confermaESalva()" class="btn-primary" style="flex: 1;">Conferma e Salva</button>

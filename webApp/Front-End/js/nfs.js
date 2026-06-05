@@ -1,9 +1,66 @@
 let nfsConfigData = null;
 
+// --- NUOVE FUNZIONI PER IL FETCH DINAMICO DEGLI STORAGE ---
+async function fetchStoragesNFS() {
+    const btn = document.getElementById('btn-fetch-storages-nfs');
+    const templateSelect = document.getElementById('nfs_template_storage');
+    const diskSelect = document.getElementById('nfs_disk_storage');
+    const hostMountSelect = document.getElementById('host_mount_path');
+
+    btn.disabled = true;
+    btn.innerText = "⏳ Scansione su PVE in corso...";
+
+    try {
+        const response = await fetch('/api/storages');
+        const data = await response.json();
+
+        if (response.ok) {
+            populateSelect(templateSelect, data.template_storages, "local");
+            populateSelect(diskSelect, data.disk_storages, "local-lvm");
+            populateSelect(hostMountSelect, data.disk_storages, "local-lvm");
+            
+            btn.innerText = "✅ Storage Trovati";
+            btn.style.backgroundColor = "#9ece6a";
+            btn.style.color = "#1a1b26";
+        } else {
+            alert("Errore da Proxmox: " + (data.error || "Sconosciuto"));
+            btn.innerText = "❌ Riprova";
+        }
+    } catch (error) {
+        alert("Impossibile connettersi al server per eseguire lo script Ansible.");
+        btn.innerText = "❌ Errore Rete";
+    } finally {
+        setTimeout(() => { 
+            btn.disabled = false; 
+            if(btn.innerText.includes("Riprova") || btn.innerText.includes("Errore")) {
+                btn.innerText = "🔄 Cerca Storage su PVE";
+            }
+        }, 3000);
+    }
+}
+
+function populateSelect(selectElement, optionsArray, defaultPreferred) {
+    selectElement.innerHTML = '<option value="">Seleziona Storage...</option>';
+    if (optionsArray && optionsArray.length > 0) {
+        optionsArray.forEach(opt => {
+            const option = document.createElement('option');
+            option.value = opt;
+            option.text = opt;
+            if (opt === defaultPreferred) option.selected = true;
+            selectElement.appendChild(option);
+        });
+    } else {
+        selectElement.innerHTML = '<option value="">Nessun storage trovato</option>';
+    }
+}
+// ------------------------------------------------------------
+
+
 // Gestisce l'abilitazione visiva del tasto Cerca in base alla validità del Gateway inserito
 function enableNFSScan() {
     const gw = document.getElementById('gateway').value.trim();
     const btn = document.getElementById('btn-scan-nfs');
+    // Abilita il bottone solo se il testo inserito assomiglia a un IPv4 valido
     if (gw.match(/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/)) {
         btn.disabled = false;
     } else {
@@ -15,7 +72,16 @@ function enableNFSScan() {
 async function scanFreeIPsNFS() {
     const gw = document.getElementById('gateway').value.trim();
     const btn = document.getElementById('btn-scan-nfs');
-    let nfsIpElement = document.getElementById('nfs_ip');
+    let nfsIpSelect = document.getElementById('nfs_ip');
+    
+    // Se nfs_ip è ancora un input di testo, lo trasformiamo al volo in una <select> coerente
+    if (nfsIpSelect && nfsIpSelect.tagName.toLowerCase() === 'input') {
+        const newSelect = document.createElement('select');
+        newSelect.id = nfsIpSelect.id;
+        newSelect.className = nfsIpSelect.className;
+        nfsIpSelect.parentNode.replaceChild(newSelect, nfsIpSelect);
+        nfsIpSelect = newSelect;
+    }
 
     btn.disabled = true;
     btn.innerText = "⏳...";
@@ -24,46 +90,27 @@ async function scanFreeIPsNFS() {
         const response = await fetch('/api/scan_ips', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ gateway: gw })
+            body: JSON.stringify({ gateway: gw }) // Passa il gateway reale inserito dall'utente
         });
         
         if (response.ok) {
             const data = await response.json();
+            nfsIpSelect.innerHTML = ''; // Svuota opzioni precedenti
 
             if (data.free_ips && data.free_ips.length > 0) {
-                
-                // Se l'elemento è ancora un input text, lo convertiamo in una <select>
-                if (nfsIpElement.tagName.toLowerCase() === 'input') {
-                    const newSelect = document.createElement('select');
-                    newSelect.id = nfsIpElement.id;
-                    newSelect.className = nfsIpElement.className; // Mantiene la classe 'form-control'
-                    newSelect.style.flex = '1';
-                    newSelect.required = true;
-                    nfsIpElement.parentNode.replaceChild(newSelect, nfsIpElement);
-                    nfsIpElement = newSelect; // Aggiorna il riferimento all'elemento nel DOM
-                }
-
-                // Svuota opzioni preesistenti
-                nfsIpElement.innerHTML = ''; 
-
-                // Aggiunge l'opzione vuota di default
                 const defaultOption = document.createElement('option');
                 defaultOption.value = "";
-                defaultOption.text = "Seleziona un IP libero dalla lista...";
+                defaultOption.text = "Seleziona un IP libero per l'NFS...";
                 defaultOption.disabled = true;
                 defaultOption.selected = true;
-                nfsIpElement.appendChild(defaultOption);
-
-                // Popola la select con tutti gli IP liberi restituiti dal backend
+                nfsIpSelect.appendChild(defaultOption);
+                
                 data.free_ips.forEach(ip => {
                     const option = document.createElement('option');
-                    option.value = ip + '/24'; // Fornisce la notazione CIDR richiesta da Proxmox
-                    option.text = ip + '/24';
-                    nfsIpElement.appendChild(option);
+                    option.value = ip + '/24'; // Fornisce il CIDR richiesto da Proxmox
+                    option.text = ip + '/24';  
+                    nfsIpSelect.appendChild(option);
                 });
-
-                // Sposta l'attenzione dell'utente sul menu appena generato
-                nfsIpElement.focus();
             } else {
                 alert("Non sono stati trovati IP liberi nel range standard.");
             }
@@ -74,60 +121,56 @@ async function scanFreeIPsNFS() {
         console.error("Errore scansione:", error);
         alert("Impossibile eseguire la scansione della rete.");
     } finally {
-        btn.innerText = "🔍 Cerca";
+        btn.innerText = "🔍 Trova IP";
         btn.disabled = false;
     }
 }
 
-// Raccoglie i dati compilati dal form e mostra il modale di riepilogo
 function saveNFSConfig() {
     nfsConfigData = {
         nfs_ip: document.getElementById('nfs_ip').value.trim(),
         nfs_network: document.getElementById('nfs_network').value.trim(),
         nfs_gw: document.getElementById('gateway').value.trim(),
         nfs_template_storage: document.getElementById('nfs_template_storage').value.trim(),
-        nfs_disk_storage: document.getElementById('nfs_disk_storage').value.trim(), // <--- AGGIUNTO
+        nfs_disk_storage: document.getElementById('nfs_disk_storage').value.trim(),
         host_mount_path: document.getElementById('host_mount_path').value.trim(),
         lxc_mount_path: document.getElementById('lxc_mount_path').value.trim()
     };
-    // Validazione robusta dei formati di rete prima dell'invio (REGEX CORRETTA!)
+
+    // Validazione robusta (Stile Tailscale Config)
+    if (!nfsConfigData.nfs_ip || !nfsConfigData.nfs_template_storage || !nfsConfigData.nfs_disk_storage || !nfsConfigData.host_mount_path || !nfsConfigData.nfs_network || !nfsConfigData.nfs_gw) {
+        alert("Per favore, compila tutti i campi prima di procedere.");
+        return;
+    }
+
+    // Validazione formattazione CIDR dell'IP scelto
     const ipCidrRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/([1-9]|[1-2][0-9]|3[0-2])$/;
-    
-    if (!ipCidrRegex.test(nfsConfigData.nfs_ip) || !ipCidrRegex.test(nfsConfigData.nfs_network)) {
-        alert("Il formato dell'IP o della Subnet non è valido. Assicurati di includere la maschera (es. /24).");
+    if (!ipCidrRegex.test(nfsConfigData.nfs_ip)) {
+        alert("Il formato dell'IP non è valido. Seleziona un IP dal tool di scansione (es. 192.168.1.200/24).");
         return;
     }
 
-    if (!nfsConfigData.nfs_template_storage || !nfsConfigData.host_mount_path) {
-        alert("Seleziona gli storage su Proxmox dai relativi menu a tendina.");
-        return;
-    }
-
-    // Compila la stringa testuale del box di riepilogo
-    const recapText = `📡 Gateway Rete: ${nfsConfigData.nfs_gw}\n🔒 Subnet K3s (NFS): ${nfsConfigData.nfs_network}\n🌐 IP Statico LXC NFS: ${nfsConfigData.nfs_ip}\n📦 Storage Template OS: ${nfsConfigData.nfs_template_storage}\n💽 Target Storage Proxmox: ${nfsConfigData.host_mount_path}\n📁 Mount Point Interno LXC: ${nfsConfigData.lxc_mount_path}`;
+    // Costruzione del testo per il Modale di Conferma
+    const recapText = `🌐 IP Server NFS: ${nfsConfigData.nfs_ip}\n📡 Gateway Rete: ${nfsConfigData.nfs_gw}\n📦 Storage Template: ${nfsConfigData.nfs_template_storage}\n💽 Storage Disco Dati: ${nfsConfigData.nfs_disk_storage}\n💽 Target Proxmox: ${nfsConfigData.host_mount_path}\n🔒 Subnet LAN (K3s): ${nfsConfigData.nfs_network}`;
 
     document.getElementById('recap-details').innerText = recapText;
     document.getElementById('recap-modal').classList.remove('hidden');
 }
 
-// Nasconde il modale di riepilogo
 function chiudiRecap() { 
     document.getElementById('recap-modal').classList.add('hidden'); 
 }
 
-// Invia la configurazione definitiva al backend ed effettua lo switch delle sezioni grafiche
 async function confermaESalvaNFS() {
     const btn = document.getElementById('btn-conferma');
     btn.disabled = true; 
     btn.innerText = "Salvataggio...";
-    
     try {
         const response = await fetch('/api/nfs/config', { 
             method: 'POST', 
             headers: { 'Content-Type': 'application/json' }, 
             body: JSON.stringify(nfsConfigData) 
         });
-        
         if (response.ok) {
             chiudiRecap();
             document.getElementById('config-section').classList.add('hidden');
@@ -144,7 +187,6 @@ async function confermaESalvaNFS() {
     }
 }
 
-// Lancia l'esecuzione del Playbook Ansible e streamma i log in tempo reale sulla console video
 async function runNFSSetup() {
     const btn = document.getElementById('btn-run');
     const consoleOutput = document.getElementById('console-output');
@@ -155,7 +197,14 @@ async function runNFSSetup() {
     consoleOutput.innerText = "Avvio processi Ansible...\n\n";
     
     try {
-        const response = await fetch('/api/nfs/setup', { method: 'POST' });
+        const response = await fetch('/api/nfs/setup', { 
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({}) // Invia un payload vuoto ma valido per prevenire errori 415 in Flask
+        });
+        
         const reader = response.body.getReader();
         const decoder = new TextDecoder("utf-8");
         let buffer = "";
@@ -176,10 +225,10 @@ async function runNFSSetup() {
                     
                     if (parsed.log) {
                         if (parsed.log.includes("PLAY [")) {
-                            consoleOutput.innerText = ""; // Svuota la stringa di caricamento iniziale
+                            consoleOutput.innerText = "";
                         }
                         consoleOutput.innerText += parsed.log;
-                        consoleOutput.scrollTop = consoleOutput.scrollHeight; // Auto-scroll verso il basso
+                        consoleOutput.scrollTop = consoleOutput.scrollHeight;
                     }
 
                     if (parsed.success === true) {
@@ -188,8 +237,10 @@ async function runNFSSetup() {
                         btn.classList.add('btn-secondary');
                         
                         const btnNext = document.getElementById('btn-next');
-                        btnNext.classList.remove('hidden');
-                        btnNext.disabled = false;
+                        if (btnNext) {
+                            btnNext.classList.remove('hidden');
+                            btnNext.disabled = false;
+                        }
                     }
                 } catch (e) {
                     console.error("Errore nel parsing del log (JSON):", e, line);

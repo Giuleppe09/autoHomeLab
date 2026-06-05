@@ -9,6 +9,14 @@ base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 class ConfigController:
 
     @staticmethod
+    def render_config_page():
+        """Renderizza la pagina HTML statica"""
+        template_dir = os.path.abspath(os.path.join(base_dir, '..', 'Front-End', 'html'))
+        if not os.path.exists(os.path.join(template_dir, 'config.html')):
+            return f"ERRORE: config.html non trovato in {template_dir}"
+        return render_template('config.html')
+    
+    @staticmethod
     def check_status(request):
         """Verifica lo stato online del nodo leggendo l'IP da vars.yml"""
         service = ConfigService(base_dir)
@@ -19,8 +27,8 @@ class ConfigController:
     @staticmethod
     def init_proxmox_api(request):
         """Riceve l'IP inserito nella index, lo archivia ed esegue l'Ansible sincrono di scoperta storage"""
-        data = request.get_json(silent=True)
 
+        data = request.get_json(silent=True)
         if not data:
              return jsonify({"success": False, "error": "JSON non configurato correttamente"}), 400
              
@@ -43,7 +51,7 @@ class ConfigController:
 
     @staticmethod
     def scan_ips(request):
-        """Scansiona gli IP liberi sulla subnet in modo totalmente stateless"""
+        """Scansiona gli IP liberi sulla subnet"""
         data = request.get_json(silent=True) or {}
         gw = data.get('gateway')
         if not gw:
