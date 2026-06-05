@@ -1,6 +1,7 @@
 let currentService = null;
+let proxmoxStorages = [];
 
-// 📖 REGISTRO COMPONENTI E CAMPI DINAMICI
+// 📖 REGISTRO COMPONENTI DINAMICI
 const serviceRegistry = {
     'nextcloud': `
         <div class="form-group">
@@ -11,46 +12,77 @@ const serviceRegistry = {
             <label for="nextcloud_password">Password Amministratore Nextcloud</label>
             <input type="password" id="nextcloud_password" name="nextcloud_password" class="form-control" placeholder="Inserisci una password sicura" required>
         </div>
+        <div class="form-group">
+            <label for="nextcloud_storage_size">Quota Storage per Dati Utente (GB)</label>
+            <input type="number" id="nextcloud_storage_size" name="nextcloud_storage_size" class="form-control" value="50" min="5" required>
+            <small id="storage-info-helper" style="color: #a9b1d6; display:block; margin-top: 5px;">⏳ Interrogazione capacità Proxmox in corso...</small>
+        </div>
     `
 };
 
-function selectService(serviceName) {
+async function selectService(serviceName) {
     currentService = serviceName;
     
     // Evidenzia visivamente la card attiva
     document.querySelectorAll('.service-card').forEach(c => c.classList.remove('active'));
     document.getElementById(`card-${serviceName}`).classList.add('active');
     
-    // Iniezione HTML dinamico
+    // Iniezione HTML dinamico del form
     const fieldsContainer = document.getElementById('service-fields');
     fieldsContainer.innerHTML = serviceRegistry[serviceName] || '<p>Nessun parametro richiesto per questa applicazione.</p>';
     
-    // Gestione UI: Mostra il form e resetta la sezione setup
+    // Mostra le sezioni grafiche corrette
     document.getElementById('form-title').innerText = `⚙️ Configurazione: ${serviceName.toUpperCase()}`;
     document.getElementById('form-section').classList.remove('hidden');
-    
     document.getElementById('setup-section').classList.add('hidden');
-    document.getElementById('console-output').classList.add('hidden');
-    document.getElementById('console-output').innerText = "In attesa dei processi...\n";
     
-    // Reset pulsanti
-    document.getElementById('btn-save').disabled = false;
-    document.getElementById('btn-save').innerText = "Salva Configurazione";
-    document.getElementById('btn-run').disabled = false;
-    document.getElementById('btn-run').innerText = "Avvia Deployment";
-    document.getElementById('btn-run').classList.replace('btn-secondary', 'btn-primary');
-    document.getElementById('btn-home').classList.add('hidden');
+    // Recupera in tempo reale le informazioni reali sullo storage da Proxmox
+    if (serviceName === 'nextcloud') {
+        await updateStorageHelperInfo();
+    }
 }
 
-// ---------------------------------------------------------
+async function updateStorageHelperInfo() {
+    const helper = document.getElementById('storage-info-helper');
+    const storageInput = document.getElementById('nextcloud_storage_size');
+    
+    try {
+        const response = await fetch('/api/storages');
+        const data = await response.json();
+        
+        if (response.ok && data.storages && data.storages.length > 0) {
+            // Cerchiamo lo storage condiviso o quello usato di solito per i dischi (es: local-lvm o Storage-1TB)
+            // Se hai un filtro specifico puoi applicarlo, altrimenti mostriamo lo spazio del primo disponibile
+            const mainStorage = data.storages.find(s => s.name === 'Storage-1TB') || data.storages[0];
+            
+            if (mainStorage) {
+                helper.innerHTML = `ℹ️ Spazio su Proxmox [<b>${mainStorage.name}</b>]: ${mainStorage.free_gb} GB liberi di ${mainStorage.total_gb} GB totali.`;
+                // Vincoliamo l'input del form per non superare lo spazio fisico disponibile
+                storageInput.max = Math.floor(mainStorage.free_gb);
+                storageInput.placeholder = `Max ${Math.floor(mainStorage.free_gb)} GB`;
+            }
+        } else {
+            helper.innerText = "⚠️ Impossibile leggere i dettagli dello storage. Inserimento libero attivo.";
+        }
+    } catch (e) {
+        helper.innerText = "❌ Errore di connessione con l'API Storage di Proxmox.";
+    }
+}
+
 // FASE 1: SALVATAGGIO CONFIGURAZIONE
-// ---------------------------------------------------------
 async function saveServiceConfig() {
     if (!currentService) return;
 
     const formElement = document.getElementById('dynamic-service-form');
     const formData = new FormData(formElement);
     const payload = Object.fromEntries(formData.entries());
+
+    // Validazione preventiva lato client sullo spazio massimo inserito
+    const storageInput = document.getElementById('nextcloud_storage_size');
+    if (storageInput && storageInput.max && parseFloat(payload.nextcloud_storage_size) > parseFloat(storageInput.max)) {
+        alert(`Errore: Non puoi allocare ${payload.nextcloud_storage_size} GB. Lo storage Proxmox ha solo ${storageInput.max} GB liberi!`);
+        return;
+    }
 
     const btnSave = document.getElementById('btn-save');
     btnSave.disabled = true;
@@ -68,7 +100,6 @@ async function saveServiceConfig() {
             throw new Error(err.message || "Errore durante il salvataggio dei parametri");
         }
 
-        // Se va a buon fine, nascondi il form e mostra la sezione "Avvia"
         document.getElementById('form-section').classList.add('hidden');
         document.getElementById('setup-title').innerText = `🚀 Deploy ${currentService.toUpperCase()}`;
         document.getElementById('setup-section').classList.remove('hidden');
@@ -80,9 +111,7 @@ async function saveServiceConfig() {
     }
 }
 
-// ---------------------------------------------------------
-// FASE 2: ESECUZIONE ANSIBLE E STREAMING
-// ---------------------------------------------------------
+// FASE 2: ESECUZIONE ANSIBLE STREAMING
 async function runServiceSetup() {
     const btnRun = document.getElementById('btn-run');
     const consoleOutput = document.getElementById('console-output');
@@ -136,9 +165,7 @@ async function runServiceSetup() {
                         btnRun.classList.replace('btn-primary', 'btn-secondary');
                         btnRun.innerText = "Completato ✔️";
                     }
-                } catch (e) {
-                    // Ignora righe non JSON
-                }
+                } catch (e) {}
             }
         }
     } catch (error) {

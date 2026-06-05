@@ -7,6 +7,7 @@ config_bp = Blueprint('config_bp', __name__)
 def check_status():
     return ConfigController.check_status(request)
 
+
 # 🔹 Unica API centralizzata per gli storage
 @config_bp.route('/api/storages', methods=['GET'])
 def get_storages():

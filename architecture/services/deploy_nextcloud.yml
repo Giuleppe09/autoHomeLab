@@ -41,7 +41,7 @@
             storageClassName: nfs-storage
             resources:
               requests:
-                storage: 500Gi
+                storage: {{ nextcloud_data_storage | quote }} # <--- ORA È COMPLETAMENTE DINAMICO!
 
     - name: 3. Genera il manifesto per il Deployment e il Service
       ansible.builtin.copy:
