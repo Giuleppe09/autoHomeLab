@@ -1,0 +1,41 @@
+---
+- name: Fase 4 - Setup Astrazione Storage (Helm e NFS Provisioner)
+  hosts: k3s_server
+  become: yes
+  vars_files:
+    - "../vars.yml"
+    - "../secrets.yml"
+
+  tasks:
+    # --- TASK AGGIUNTO: Assicura che TUTTI i nodi abbiano i driver NFS ---
+    - name: Assicurati che i driver NFS siano installati su tutto il cluster
+      delegate_to: "{{ item }}"
+      ansible.builtin.apt:
+        name: nfs-common
+        state: present
+        update_cache: yes
+      loop: "{{ groups['k3s_server'] + groups['k3s_agent'] }}"
+    # --------------------------------------------------------------------
+
+    - name: 1. Installa Helm tramite script ufficiale
+      ansible.builtin.shell: curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      args:
+        creates: /usr/local/bin/helm
+
+    - name: 2. Aggiungi e aggiorna la repository Helm per l'NFS Provisioner
+      ansible.builtin.shell: >
+        helm repo add nfs-subdir-external-provisioner https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner/ &&
+        helm repo update
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+    - name: 3. Deploy dell'NFS Subdir External Provisioner tramite Helm
+      ansible.builtin.shell: >
+        helm upgrade --install nfs-provisioner nfs-subdir-external-provisioner/nfs-subdir-external-provisioner
+        --set nfs.server={{ nfs_ip.split('/')[0] }}
+        --set nfs.path={{ lxc_mount_path }}
+        --set storageClass.name=nfs-storage
+        --set storageClass.defaultClass=true
+        --namespace kube-system
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml

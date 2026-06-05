@@ -3,44 +3,40 @@
   hosts: proxmox
   gather_facts: false
   vars_files:
-    - "../../vars.yml"
-    - "../../secrets.yml"
-  vars:
-    template_name: "ubuntu-2404-cloudinit"
-    ubuntu_image_url: "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"
-    image_dest: "/tmp/ubuntu-2404-cloudimg.img"
-    storage_pool: "local-lvm"
+    - "../vars.yml"
+    - "../secrets.yml"
 
   tasks:
     - name: Verifica se il template esiste gia' su Proxmox (ricerca per nome)
-      ansible.builtin.shell: "qm list | awk '{print $2}' | grep -x '{{ template_name }}'"
+      ansible.builtin.shell: "qm list | awk '{print $2}' | grep -x '{{ k3s_template_name | default('ubuntu-2404-cloudinit') }}'"
       register: template_exists
       failed_when: false
       changed_when: false
 
-    - name: Scarica l'immagine Cloud di Ubuntu 24.04 (Solo se il template non esiste)
+    - name: Scarica l'immagine Cloud di Ubuntu 24.04 (Solo se non esiste)
       ansible.builtin.get_url:
-        url: "{{ ubuntu_image_url }}"
-        dest: "{{ image_dest }}"
+        url: "{{ ubuntu_image_url | default('https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img') }}"
+        # Usa lo storage scelto dall'utente per parcheggiare temporaneamente l'immagine
+        dest: "/mnt/pve/{{ k3s_template_storage }}/ubuntu-2404-cloudimg.img"
         mode: '0644'
       when: template_exists.rc != 0
 
     - name: Crea la VM base per il template
       ansible.builtin.command: >
-        qm create 8000 --name {{ template_name }} --memory 2048 --cores 2 --net0 virtio,bridge=vmbr0
+        qm create 8000 --name {{ k3s_template_name | default('ubuntu-2404-cloudinit') }} --memory 2048 --cores 2 --net0 virtio,bridge=vmbr0
       when: template_exists.rc != 0
 
-    - name: Importa il file .img nello storage di Proxmox
+    - name: Importa il file .img nello storage disco scelto dall'utente
       ansible.builtin.command: >
-        qm importdisk 8000 {{ image_dest }} {{ storage_pool }}
+        qm importdisk 8000 /mnt/pve/{{ k3s_template_storage }}/ubuntu-2404-cloudimg.img {{ k3s_disk_storage }}
       when: template_exists.rc != 0
 
     - name: Configura l'hardware della VM (SCSI, Cloud-Init, Boot)
       ansible.builtin.command: >
         qm set 8000 
         --scsihw virtio-scsi-pci 
-        --scsi0 {{ storage_pool }}:vm-8000-disk-0 
-        --ide2 {{ storage_pool }}:cloudinit 
+        --scsi0 {{ k3s_disk_storage }}:vm-8000-disk-0 
+        --ide2 {{ k3s_disk_storage }}:cloudinit 
         --boot c --bootdisk scsi0 
         --serial0 socket --vga serial0
       when: template_exists.rc != 0

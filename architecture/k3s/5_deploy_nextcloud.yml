@@ -1,0 +1,112 @@
+---
+- name: Fase 5 - Deployment del Service Layer (Nextcloud)
+  hosts: k3s_server
+  become: yes
+  vars_files:
+    - "../vars.yml"
+    - "../secrets.yml"
+
+  tasks:
+    - name: 1. Crea la directory per i manifesti Kubernetes
+      ansible.builtin.file:
+        path: /root/k8s-manifests/nextcloud
+        state: directory
+        mode: '0755'
+
+    - name: 2. Genera il manifesto per i Persistent Volume Claims (PVC)
+      ansible.builtin.copy:
+        dest: /root/k8s-manifests/nextcloud/nextcloud-pvc.yaml
+        content: |
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: nextcloud-config-pvc
+            namespace: default
+          spec:
+            accessModes:
+              - ReadWriteMany
+            storageClassName: nfs-storage
+            resources:
+              requests:
+                storage: 5Gi
+          ---
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: nextcloud-userdata-pvc
+            namespace: default
+          spec:
+            accessModes:
+              - ReadWriteMany
+            storageClassName: nfs-storage
+            resources:
+              requests:
+                storage: 500Gi
+
+    - name: 3. Genera il manifesto per il Deployment e il Service
+      ansible.builtin.copy:
+        dest: /root/k8s-manifests/nextcloud/nextcloud-deployment.yaml
+        content: |
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: nextcloud
+            namespace: default
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: nextcloud
+            template:
+              metadata:
+                labels:
+                  app: nextcloud
+              spec:
+                containers:
+                  - name: nextcloud
+                    image: nextcloud:latest
+                    ports:
+                      - containerPort: 80
+                    env:
+                      - name: NEXTCLOUD_ADMIN_USER
+                        value: "admin"
+                      - name: NEXTCLOUD_ADMIN_PASSWORD
+                        value: "{{ nextcloud_admin_password }}"
+                      - name: NEXTCLOUD_TRUSTED_DOMAINS
+                        value: "{{ k3s_agent_ip.split('/')[0] }}"
+                    volumeMounts:
+                      - name: nextcloud-config
+                        mountPath: /var/www/html/config
+                      - name: nextcloud-data
+                        mountPath: /var/www/html/data
+                volumes:
+                  - name: nextcloud-config
+                    persistentVolumeClaim:
+                      claimName: nextcloud-config-pvc
+                  - name: nextcloud-data
+                    persistentVolumeClaim:
+                      claimName: nextcloud-userdata-pvc
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: nextcloud-svc
+            namespace: default
+          spec:
+            type: NodePort
+            selector:
+              app: nextcloud
+            ports:
+              - port: 80
+                targetPort: 80
+                nodePort: 30080
+
+    - name: 4. Applica il manifesto dei PVC al cluster
+      ansible.builtin.command: kubectl apply -f /root/k8s-manifests/nextcloud/nextcloud-pvc.yaml
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+    - name: 5. Applica il manifesto di Deployment al cluster
+      ansible.builtin.command: kubectl apply -f /root/k8s-manifests/nextcloud/nextcloud-deployment.yaml
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml

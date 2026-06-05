@@ -1,0 +1,32 @@
+---
+- name: Fase 3 - Configurazione del Control Plane (K3s Server)
+  hosts: k3s_server
+  become: yes
+  tasks:
+    - name: Scarica ed installa K3s in modalita' Server
+      ansible.builtin.shell: curl -sfL https://get.k3s.io | sh -
+      args:
+        creates: /usr/local/bin/k3s
+
+    - name: Attendi la generazione del Node Token
+      ansible.builtin.wait_for:
+        path: /var/lib/rancher/k3s/server/node-token
+        state: present
+        timeout: 60
+
+    - name: Estrai il Node Token
+      ansible.builtin.command: cat /var/lib/rancher/k3s/server/node-token
+      register: k3s_token_cmd
+      changed_when: false
+
+- name: Fase 3 - Configurazione del Worker Node (K3s Agent)
+  hosts: k3s_agent
+  become: yes
+  tasks:
+    - name: Scarica ed installa K3s in modalita' Agent e unisciti al cluster
+      ansible.builtin.shell: >
+        curl -sfL https://get.k3s.io | 
+        K3S_URL=https://{{ hostvars[groups['k3s_server'][0]]['ansible_host'] }}:6443 
+        K3S_TOKEN={{ hostvars[groups['k3s_server'][0]]['k3s_token_cmd']['stdout'] }} sh -
+      args:
+        creates: /usr/local/bin/k3s-agent

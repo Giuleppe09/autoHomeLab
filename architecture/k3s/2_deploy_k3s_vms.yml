@@ -3,8 +3,8 @@
   hosts: proxmox
   gather_facts: false
   vars_files:
-    - "../../vars.yml"
-    - "../../secrets.yml"
+    - "../vars.yml"
+    - "../secrets.yml"
   vars:
     template_name: "ubuntu-2404-cloudinit"
 
@@ -26,70 +26,104 @@
         mode: '0644'
 
     # =========================================================================
-    # K3S SERVER (CONTROL PLANE) - 2 Core / 2 GB RAM
+    # K3S SERVER (CONTROL PLANE) - ASSEGNAZIONE ID DINAMICA
     # =========================================================================
-    - name: Controlla se la VM K3s-Server esiste gia'
-      ansible.builtin.command: qm status {{ k3s_server_vmid }}
-      register: server_exists
-      failed_when: false
+    - name: Cerca se la VM K3s-Server esiste gia' (ricerca per nome)
+      ansible.builtin.shell: "qm list | awk '$2 == \"{{ k3s_server_hostname }}\" {print $1}'"
+      register: existing_server
       changed_when: false
+
+    - name: Ottieni il prossimo ID disponibile per il Server
+      ansible.builtin.command: pvesh get /cluster/nextid
+      register: next_server_id
+      when: existing_server.stdout == ""
+      changed_when: false
+
+    - name: Imposta l'ID finale per il Server
+      ansible.builtin.set_fact:
+        active_server_vmid: "{{ existing_server.stdout if existing_server.stdout != '' else next_server_id.stdout }}"
+
+    - name: Aggiorna vars.yml in automatico con il nuovo VMID del Server
+      delegate_to: localhost
+      ansible.builtin.lineinfile:
+        path: "../vars.yml"
+        regexp: '^k3s_server_vmid:'
+        line: "k3s_server_vmid: {{ active_server_vmid }}"
+      when: existing_server.stdout == ""
 
     - name: Clona il template per K3s-Server
       ansible.builtin.command: >
-        qm clone {{ template_vmid_cmd.stdout }} {{ k3s_server_vmid }} --name {{ k3s_server_hostname }} --full 1
-      when: server_exists.rc != 0
+        qm clone {{ template_vmid_cmd.stdout }} {{ active_server_vmid }} --name {{ k3s_server_hostname }} --full 1
+      when: existing_server.stdout == ""
 
-    - name: Configura Risorse e Cloud-Init per K3s-Server (Iniettiamo IP, Utente, Password)
+    - name: Configura Risorse e Cloud-Init per K3s-Server
       ansible.builtin.command: >
-        qm set {{ k3s_server_vmid }}
+        qm set {{ active_server_vmid }}
         --cores 2
         --memory 2048
         --ciuser {{ k3s_user }}
         --cipassword '{{ k3s_password }}'
         --ipconfig0 ip={{ k3s_server_ip }},gw={{ k3s_server_gw }}
         --sshkeys /tmp/id_ansible.pub
-      when: server_exists.rc != 0
+      when: existing_server.stdout == ""
 
-    - name: Ridimensiona il disco OS per K3s-Server (Aggiungiamo 18GB ai 2GB base)
-      ansible.builtin.command: qm resize {{ k3s_server_vmid }} scsi0 +18G
-      when: server_exists.rc != 0
+    - name: Ridimensiona il disco OS per K3s-Server
+      ansible.builtin.command: qm resize {{ active_server_vmid }} scsi0 +18G
+      when: existing_server.stdout == ""
 
     - name: Avvia la VM K3s-Server
-      ansible.builtin.command: qm start {{ k3s_server_vmid }}
-      when: server_exists.rc != 0
+      ansible.builtin.command: qm start {{ active_server_vmid }}
+      when: existing_server.stdout == ""
 
     # =========================================================================
-    # K3S AGENT (WORKER NODE) - 4 Core / 4 GB RAM
+    # K3S AGENT (WORKER NODE) - ASSEGNAZIONE ID DINAMICA
     # =========================================================================
-    - name: Controlla se la VM K3s-Agent esiste gia'
-      ansible.builtin.command: qm status {{ k3s_agent_vmid }}
-      register: agent_exists
-      failed_when: false
+    - name: Cerca se la VM K3s-Agent esiste gia' (ricerca per nome)
+      ansible.builtin.shell: "qm list | awk '$2 == \"{{ k3s_agent_hostname }}\" {print $1}'"
+      register: existing_agent
       changed_when: false
+
+    - name: Ottieni il prossimo ID disponibile per l'Agent
+      ansible.builtin.command: pvesh get /cluster/nextid
+      register: next_agent_id
+      when: existing_agent.stdout == ""
+      changed_when: false
+
+    - name: Imposta l'ID finale per l'Agent
+      ansible.builtin.set_fact:
+        active_agent_vmid: "{{ existing_agent.stdout if existing_agent.stdout != '' else next_agent_id.stdout }}"
+
+    - name: Aggiorna vars.yml in automatico con il nuovo VMID dell'Agent
+      delegate_to: localhost
+      ansible.builtin.lineinfile:
+        path: "../vars.yml"
+        regexp: '^k3s_agent_vmid:'
+        line: "k3s_agent_vmid: {{ active_agent_vmid }}"
+      when: existing_agent.stdout == ""
 
     - name: Clona il template per K3s-Agent
       ansible.builtin.command: >
-        qm clone {{ template_vmid_cmd.stdout }} {{ k3s_agent_vmid }} --name {{ k3s_agent_hostname }} --full 1
-      when: agent_exists.rc != 0
+        qm clone {{ template_vmid_cmd.stdout }} {{ active_agent_vmid }} --name {{ k3s_agent_hostname }} --full 1
+      when: existing_agent.stdout == ""
 
-    - name: Configura Risorse e Cloud-Init per K3s-Agent (Iniettiamo IP, Utente, Password)
+    - name: Configura Risorse e Cloud-Init per K3s-Agent
       ansible.builtin.command: >
-        qm set {{ k3s_agent_vmid }}
+        qm set {{ active_agent_vmid }}
         --cores 4
         --memory 4096
         --ciuser {{ k3s_user }}
         --cipassword '{{ k3s_password }}'
         --ipconfig0 ip={{ k3s_agent_ip }},gw={{ k3s_agent_gw }}
         --sshkeys /tmp/id_ansible.pub
-      when: agent_exists.rc != 0
+      when: existing_agent.stdout == ""
 
-    - name: Ridimensiona il disco OS per K3s-Agent (Aggiungiamo 18GB ai 2GB base)
-      ansible.builtin.command: qm resize {{ k3s_agent_vmid }} scsi0 +18G
-      when: agent_exists.rc != 0
+    - name: Ridimensiona il disco OS per K3s-Agent
+      ansible.builtin.command: qm resize {{ active_agent_vmid }} scsi0 +18G
+      when: existing_agent.stdout == ""
 
     - name: Avvia la VM K3s-Agent
-      ansible.builtin.command: qm start {{ k3s_agent_vmid }}
-      when: agent_exists.rc != 0
+      ansible.builtin.command: qm start {{ active_agent_vmid }}
+      when: existing_agent.stdout == ""
 
     # =========================================================================
     # POST-BOOT - Aspettiamo che il Cloud-init finisca e accenda l'SSH

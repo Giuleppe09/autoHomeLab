@@ -92,16 +92,14 @@
       ansible.builtin.command: "pct set {{ actual_vmid }} --features nesting=1"
 
     # --- FASE 3: BIND MOUNT STORAGE FISICO E START ---
-    # --- FASE 3: BIND MOUNT STORAGE FISICO E START ---
     - name: Verifica se il disco dati (mp0) e' gia' configurato
       ansible.builtin.shell: "grep -q '^mp0:' /etc/pve/lxc/{{ actual_vmid }}.conf"
       register: mp_check
       failed_when: false
       changed_when: false
 
-    - name: Configura il Mount Point (Crea disco dati virtuale sullo storage scelto)
-      # Nota: Il numero 20 indica i Gigabyte del disco dati. Puoi cambiarlo a piacimento.
-      ansible.builtin.command: "pct set {{ actual_vmid }} -mp0 {{ host_mount_path }}:20,mp={{ lxc_mount_path }}"
+    - name: Configura il Bind Mount (Passaggio diretto della directory dell'Host)
+      ansible.builtin.command: "pct set {{ actual_vmid }} -mp0 /mnt/pve/{{ host_mount_path | trim }},mp={{ lxc_mount_path | trim }}"
       when: mp_check.rc != 0
 
     - name: Avvia il container NFS
