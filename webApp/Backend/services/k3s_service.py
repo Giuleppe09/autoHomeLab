@@ -1,31 +1,35 @@
 import os
 import subprocess
 import yaml
+import json
 from daos.k3s_dao import K3sDAO
+from services.inventory_service import InventoryService
 
 class K3sService:
     @staticmethod
     def save_k3s_parameters(data):
         dao = K3sDAO()
         
-        subnet_suffix = "/24"
         def format_ip(ip):
             if not ip: return ""
             ip = str(ip).strip()
-            return ip if "/" in ip else ip + subnet_suffix
+            return ip if "/" in ip else ip + "/24"
 
         vars_data = {
-            "k3s_server_vmid": 101,
             "k3s_server_hostname": "K3s-Server",
+            "k3s_server_vmid": None,
             "k3s_server_ip": format_ip(data.get('k3s_server_ip')),
             "k3s_server_gw": data.get('gateway'),
-            "k3s_agent_vmid": 102,
             "k3s_agent_hostname": "K3s-Agent",
+            "k3s_agent_vmid": None,
             "k3s_agent_ip": format_ip(data.get('k3s_agent_ip')),
             "k3s_agent_gw": data.get('gateway'),
-            "k3s_user": data.get('k3s_user')
+            "k3s_user": data.get('k3s_user'),
+            "k3s_template_storage": data.get('k3s_template_storage'),
+            "k3s_disk_storage": data.get('k3s_disk_storage')
         }
         
+        # Rimossa la nextcloud_password
         secrets_data = {
             "k3s_password": data.get('k3s_password')
         }
@@ -35,13 +39,11 @@ class K3sService:
     @staticmethod
     def execute_k3s_setup_stream(pve_ip):
         dao = K3sDAO()
-        scripts_path = os.path.join(dao.k3s_dir, "script")
-        inventory_path = os.path.join(dao.k3s_dir, "inventory.ini")
+        scripts_path = os.path.join(dao.k3s_dir)
+        vars_path = os.path.join(dao.arch_dir, "vars.yml")
         
-        # Se pve_ip non è in sessione, proviamo a leggerla dal vars.yml di k3s
         if not pve_ip:
             try:
-                vars_path = os.path.join(dao.k3s_dir, "vars.yml")
                 if os.path.exists(vars_path):
                     with open(vars_path, 'r') as f:
                         k3s_vars = yaml.safe_load(f) or {}
@@ -49,26 +51,38 @@ class K3sService:
             except Exception:
                 pass
 
-        if not pve_ip:
-            yield "\n❌ Errore: IP del nodo Proxmox non trovato. Esegui nuovamente il setup dall'inizio.\n"
+        inventory_path = InventoryService.generate_inventory(pve_ip)
+        if not inventory_path:
+            yield json.dumps({"success": False, "log": "\n❌ Errore: Impossibile generare l'inventory globale.\n"}) + "\n"
             return
             
-        with open(inventory_path, 'w') as f:
-            f.write(f"[proxmox]\nproxmox ansible_host={pve_ip} ansible_user=root ansible_ssh_common_args='-o StrictHostKeyChecking=no'\n\n")
-            
-        playbooks = ["0_create_cloudinit_template.yml", "2_deploy_k3s_vms.yml"]
+        # Rimosso il playbook 5 (Nextcloud), K3s si ferma al Provisioner Storage!
+        playbooks = [
+            "1_create_cloudinit_template.yml", 
+            "2_deploy_k3s_vms.yml",
+            "3_install_k3s_cluster.yml",
+            "4_install_nfs_provisioner.yml"
+        ]
+        
+        env = os.environ.copy()
+        env["ANSIBLE_HOST_KEY_CHECKING"] = "False"
+        env["PYTHONUNBUFFERED"] = "1"
         
         for pb in playbooks:
             pb_path = os.path.join(scripts_path, pb)
-            yield f"\n\n▶️ Esecuzione di: {pb}...\n{'-'*40}\n"
+            yield json.dumps({"log": f"\n\n▶️ Esecuzione di: {pb}...\n{'-'*40}\n"}) + "\n"
+            
             cmd = ["ansible-playbook", "-i", inventory_path, pb_path]
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, env=env)
+            
             for line in iter(process.stdout.readline, ''):
-                yield line
+                yield json.dumps({"log": line}) + "\n"
+                
             process.stdout.close()
             process.wait()
+            
             if process.returncode != 0:
-                yield f"\n❌ Errore durante l'esecuzione di {pb} (Codice: {process.returncode}). Setup interrotto.\n"
+                yield json.dumps({"success": False, "log": f"\n❌ Errore in {pb} (Codice: {process.returncode}). Setup interrotto.\n"}) + "\n"
                 break
         else:
-            yield "\n✅ Playbook eseguiti con successo!\n"
+            yield json.dumps({"success": True, "log": "\n✅ Cluster K3s e Astrazione Storage completati con successo!\n"}) + "\n"

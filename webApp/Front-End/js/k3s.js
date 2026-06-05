@@ -1,13 +1,62 @@
 let k3sConfigData = null;
 
+async function fetchStoragesK3s() {
+    const btn = document.getElementById('btn-fetch-storages-k3s');
+    const templateSelect = document.getElementById('k3s_template_storage');
+    const diskSelect = document.getElementById('k3s_disk_storage');
+
+    btn.disabled = true;
+    btn.innerText = "⏳ Lettura in corso...";
+
+    try {
+        // NOTA: Se su NFS usi una rotta diversa per gli storage (es. /api/proxmox/storages), modificala qui!
+        const response = await fetch('/api/storages'); 
+        const data = await response.json();
+        
+        if (response.ok) {
+            // FIX: Copre ogni possibile struttura JSON restituita dal tuo backend (data.storages o data.disk_storages)
+            const storagesArray = data.disk_storages || data.storages || (Array.isArray(data) ? data : []);
+            
+            populateSelect(templateSelect, storagesArray, "Storage-1TB");
+            populateSelect(diskSelect, storagesArray, "local-lvm");
+            btn.innerText = "✅ Trovati";
+            btn.style.backgroundColor = "#9ece6a";
+            btn.style.color = "#1a1b26";
+        } else {
+            alert("Errore API: " + (data.error || "Sconosciuto"));
+            btn.innerText = "❌ Riprova";
+        }
+    } catch (error) {
+        alert("Impossibile connettersi per leggere gli storage.");
+        btn.innerText = "❌ Errore Rete";
+    } finally {
+        setTimeout(() => { 
+            btn.disabled = false; 
+            if(btn.innerText.includes("Riprova") || btn.innerText.includes("Errore")) {
+                btn.innerText = "🔄 Cerca Storage";
+            }
+        }, 3000);
+    }
+}
+
+function populateSelect(selectElement, optionsArray, defaultPreferred) {
+    selectElement.innerHTML = '<option value="">Seleziona Storage...</option>';
+    if (optionsArray && optionsArray.length > 0) {
+        optionsArray.forEach(opt => {
+            const option = document.createElement('option');
+            option.value = opt; option.text = opt;
+            if (opt === defaultPreferred) option.selected = true;
+            selectElement.appendChild(option);
+        });
+    } else {
+        selectElement.innerHTML = '<option value="">Nessuno storage trovato</option>';
+    }
+}
+
 function enableK3sScan() {
     const gw = document.getElementById('gateway').value.trim();
     const btn = document.getElementById('btn-scan-k3s');
-    if (gw.match(/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/)) {
-        btn.disabled = false;
-    } else {
-        btn.disabled = true;
-    }
+    btn.disabled = !gw.match(/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/);
 }
 
 async function scanFreeIPsK3s() {
@@ -37,41 +86,22 @@ async function scanFreeIPsK3s() {
         
         if (response.ok) {
             const data = await response.json();
-            ipFields.forEach(id => {
-                let el = document.getElementById(id);
-                el.innerHTML = '';
-            });
+            ipFields.forEach(id => document.getElementById(id).innerHTML = '');
 
             if (data.free_ips && data.free_ips.length >= 2) {
                 ipFields.forEach((id, index) => {
                     let el = document.getElementById(id);
-                    const defaultOption = document.createElement('option');
-                    defaultOption.value = "";
-                    defaultOption.text = "Seleziona un IP...";
-                    defaultOption.disabled = true;
-                    
-                    el.appendChild(defaultOption);
-
+                    el.innerHTML = '<option value="" disabled selected>Seleziona un IP...</option>';
                     data.free_ips.forEach(ip => {
-                        const option = document.createElement('option');
-                        option.value = ip; 
-                        option.text = ip;  
-                        el.appendChild(option);
+                        el.innerHTML += `<option value="${ip}">${ip}</option>`;
                     });
-                    
-                    // Auto-assegna gli ip in modo crescente .200, .201, .202
-                    if (data.free_ips[index]) {
-                        el.value = data.free_ips[index];
-                    }
+                    if (data.free_ips[index]) el.value = data.free_ips[index];
                 });
             } else {
-                alert("Non sono stati trovati abbastanza IP liberi nel range.");
+                alert("Non sono stati trovati abbastanza IP liberi.");
             }
-        } else {
-            alert("Errore dal server durante la scansione.");
         }
     } catch (error) {
-        console.error("Errore durante la scansione:", error);
         alert("Impossibile eseguire la scansione della rete.");
     } finally {
         btn.innerText = "🔍 Trova IP";
@@ -85,26 +115,27 @@ function saveK3sConfig() {
         k3s_server_ip: document.getElementById('k3s_server_ip').value.trim(),
         k3s_agent_ip: document.getElementById('k3s_agent_ip').value.trim(),
         k3s_user: document.getElementById('k3s_user').value.trim(),
-        k3s_password: document.getElementById('k3s_password').value.trim()
+        k3s_password: document.getElementById('k3s_password').value.trim(),
+        k3s_template_storage: document.getElementById('k3s_template_storage').value.trim(),
+        k3s_disk_storage: document.getElementById('k3s_disk_storage').value.trim()
     };
 
-    if (!k3sConfigData.k3s_server_ip || !k3sConfigData.k3s_agent_ip || !k3sConfigData.k3s_password) {
+    if (!k3sConfigData.k3s_server_ip || !k3sConfigData.k3s_agent_ip || !k3sConfigData.k3s_password || !k3sConfigData.k3s_template_storage) {
         alert("Compila tutti i campi obbligatori!");
         return;
     }
 
-    const recapText = `📡 Gateway: ${k3sConfigData.gateway}
-🧠 IP K3s Server: ${k3sConfigData.k3s_server_ip}
-💪 IP K3s Agent: ${k3sConfigData.k3s_agent_ip}
-👤 Utente Nodi: ${k3sConfigData.k3s_user}`;
+    const recapText = `🧠 K3s Server: ${k3sConfigData.k3s_server_ip}
+💪 K3s Agent: ${k3sConfigData.k3s_agent_ip}
+👤 Utente OS: ${k3sConfigData.k3s_user}
+📦 Storage Template: ${k3sConfigData.k3s_template_storage}
+💽 Storage Dischi: ${k3sConfigData.k3s_disk_storage}`;
     
     document.getElementById('recap-details').innerText = recapText;
     document.getElementById('recap-modal').classList.remove('hidden');
 }
 
-function chiudiRecap() {
-    document.getElementById('recap-modal').classList.add('hidden');
-}
+function chiudiRecap() { document.getElementById('recap-modal').classList.add('hidden'); }
 
 async function confermaESalvaK3s() {
     const btn = document.getElementById('btn-conferma');
@@ -120,17 +151,16 @@ async function confermaESalvaK3s() {
 
         if (response.ok) {
             chiudiRecap();
-            document.getElementById('config-section').classList.add('hidden');
+            document.getElementById('config-card').classList.add('hidden');
             document.getElementById('setup-section').classList.remove('hidden');
         } else {
             const error = await response.json();
-            alert("Errore dal server: " + (error.message || "Errore sconosciuto"));
+            alert("Errore: " + (error.message || "Sconosciuto"));
             btn.disabled = false;
             btn.innerText = "Conferma e Salva";
         }
     } catch (error) {
-        console.error("Errore di rete:", error);
-        alert("Impossibile connettersi al server per salvare la configurazione K3s.");
+        alert("Impossibile connettersi al server.");
         btn.disabled = false;
         btn.innerText = "Conferma e Salva";
     }
@@ -146,35 +176,63 @@ async function runK3sSetup() {
     consoleOutput.innerText = "Avvio processi Ansible...\n\n";
 
     try {
-        const response = await fetch('/api/k3s/setup', {
-            method: 'POST'
+        // FIX 1: Diciamo esplicitamente che stiamo parlando in JSON
+        const response = await fetch('/api/k3s/setup', { 
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}) // Body vuoto ma valido
         });
 
-        if (!response.body) {
-            throw new Error("Il server non supporta lo streaming");
+        // Se l'errore è grave (es. 500) blocca tutto subito
+        if (!response.ok && !response.body) {
+            const errData = await response.json();
+            throw new Error(errData.message || "Errore grave del server");
         }
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder("utf-8");
+        let buffer = "";
 
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
             
-            const chunk = decoder.decode(value, { stream: true });
-            consoleOutput.innerText += chunk;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop(); // Conserva l'ultima riga se incompleta
             
-            // Auto-scroll verso il basso
-            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+            for (const line of lines) {
+                if (!line.trim()) continue;
+                try {
+                    const parsed = JSON.parse(line);
+                    
+                    // FIX 2: Se il backend sputa un errore che non è un log, mostralo!
+                    if (parsed.success === false && parsed.message) {
+                         consoleOutput.innerText += "\n❌ Errore dal Backend: " + parsed.message;
+                         btn.innerText = "Errore";
+                         btn.disabled = false;
+                         return; // Ferma lo streaming
+                    }
+
+                    if (parsed.log) {
+                        if (parsed.log.includes("PLAY [")) consoleOutput.innerText = "";
+                        consoleOutput.innerText += parsed.log;
+                        consoleOutput.scrollTop = consoleOutput.scrollHeight;
+                    }
+                    if (parsed.success === true) {
+                        btn.innerText = "Completato ✔️";
+                        btn.classList.replace('btn-primary', 'btn-secondary');
+                        document.getElementById('btn-next').classList.remove('hidden');
+                        document.getElementById('btn-next').disabled = false;
+                    }
+                } catch (e) {
+                    // console.error("Ignoro riga non JSON:", line);
+                }
+            }
         }
-
-        consoleOutput.innerText += "\n✅ Processo completato.";
-        btn.innerText = "Completato";
-        document.getElementById('btn-next').style.display = 'inline-block';
-        document.getElementById('btn-next').disabled = false;
-
     } catch (error) {
-        consoleOutput.innerText += "\n\n❌ Errore di rete: " + error.message;
+        consoleOutput.innerText += "\n\n❌ Errore: " + error.message;
         btn.innerText = "Errore";
+        btn.disabled = false;
     }
 }

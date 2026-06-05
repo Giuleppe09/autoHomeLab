@@ -3,10 +3,16 @@
   hosts: k3s_server
   become: yes
   tasks:
+    - name: Assicurati che i driver NFS siano installati (Prerequisito Storage)
+      ansible.builtin.apt:
+        name: nfs-common
+        state: present
+        update_cache: yes
+
     - name: Scarica ed installa K3s in modalita' Server
       ansible.builtin.shell: curl -sfL https://get.k3s.io | sh -
       args:
-        creates: /usr/local/bin/k3s
+        creates: /etc/systemd/system/k3s.service
 
     - name: Attendi la generazione del Node Token
       ansible.builtin.wait_for:
@@ -23,10 +29,24 @@
   hosts: k3s_agent
   become: yes
   tasks:
-    - name: Scarica ed installa K3s in modalita' Agent e unisciti al cluster
+    - name: Assicurati che i driver NFS siano installati (Prerequisito Storage)
+      ansible.builtin.apt:
+        name: nfs-common
+        state: present
+        update_cache: yes
+
+    - name: Scarica ed installa K3s in modalita' Agent (senza avviarlo)
       ansible.builtin.shell: >
         curl -sfL https://get.k3s.io | 
+        INSTALL_K3S_SKIP_START=true
         K3S_URL=https://{{ hostvars[groups['k3s_server'][0]]['ansible_host'] }}:6443 
         K3S_TOKEN={{ hostvars[groups['k3s_server'][0]]['k3s_token_cmd']['stdout'] }} sh -
       args:
-        creates: /usr/local/bin/k3s-agent
+        creates: /etc/systemd/system/k3s-agent.service
+
+    - name: Avvia e abilita il servizio K3s Agent in modo sicuro
+      ansible.builtin.systemd:
+        name: k3s-agent
+        state: started
+        enabled: yes
+        daemon_reload: yes

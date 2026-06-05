@@ -4,6 +4,7 @@ from routes.tailscale_routes import tailscale_bp
 from routes.config_routes import config_bp
 from routes.k3s_routes import k3s_bp
 from routes.nfs_routes import nfs_bp
+from routes.services_routes import services_bp
 
 base_dir = os.path.dirname(os.path.abspath(__file__))
 template_dir = os.path.abspath(os.path.join(base_dir, '..', 'Front-End', 'html'))
@@ -16,6 +17,7 @@ app.register_blueprint(tailscale_bp)
 app.register_blueprint(config_bp)
 app.register_blueprint(k3s_bp)
 app.register_blueprint(nfs_bp)
+app.register_blueprint(services_bp)
 
 # --- ROTTE PAGINE HTML (Totalmente delegate ai Controller) ---
 
