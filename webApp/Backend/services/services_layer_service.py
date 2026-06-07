@@ -8,16 +8,18 @@ from services.inventory_service import InventoryService
 class ServicesLayerService:
     
     @staticmethod
-    def save_nextcloud_config(username, password):
-        """Smista l'username in vars.yml globale e la password in secrets.yml"""
+    def save_nextcloud_config(data):
+        """Smista i dati del payload dinamico per salvarli nei file di configurazione"""
         dao = K3sDAO()
         
-        vars_data = {
-            "nextcloud_admin_user": username
-        }
-        secrets_data = {
-            "nextcloud_admin_password": password
-        }
+        vars_data = {}
+        secrets_data = {}
+        
+        for key, value in data.items():
+            if "password" in key.lower() or "secret" in key.lower():
+                secrets_data[key] = value
+            else:
+                vars_data[key] = value
         
         dao.save_k3s_config(vars_data, secrets_data)
 

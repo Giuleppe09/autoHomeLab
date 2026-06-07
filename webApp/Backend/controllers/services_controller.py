@@ -22,8 +22,8 @@ class ServicesController:
             if not username or not password:
                 return jsonify({"success": False, "message": "Dati di autenticazione Nextcloud incompleti"}), 400
             
-            # ---> ECCO LA RIGA CORRETTA <---
-            ServicesLayerService.save_nextcloud_config(username, password)
+            # Passiamo l'intero payload (incluso nextcloud_storage_size e disk_storage) al Service
+            ServicesLayerService.save_nextcloud_config(data)
             
             return jsonify({"success": True, "message": "Configurazione applicativa registrata"}), 200
         except Exception as e:
