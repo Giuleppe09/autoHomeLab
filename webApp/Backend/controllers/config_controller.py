@@ -42,8 +42,9 @@ class ConfigController:
             # Salva l'IP di destinazione negli YAML
             service.save_proxmox_ip(pve_ip)
 
-            # Lancia la scansione sincrona per generare il file proxmox_info.json
-            ProxmoxService.discover_storages_sync(pve_ip, base_dir)
+            # Lancia i playbook di test connessione e setup autenticazione
+            proxmox_service = ProxmoxService()
+            proxmox_service.init_connection(pve_ip, base_dir)
             return jsonify({"success": True}), 200
 
         except Exception as e:

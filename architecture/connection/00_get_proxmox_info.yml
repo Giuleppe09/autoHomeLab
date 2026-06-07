@@ -1,0 +1,20 @@
+---
+- name: Check Connessione e Recupero Informazioni Base Proxmox
+  hosts: proxmox
+  gather_facts: false
+
+  tasks:
+    - name: Chiedi a Proxmox il prossimo VMID disponibile
+      ansible.builtin.command: pvesh get /cluster/nextid
+      register: pve_next_vmid
+      changed_when: false
+      tags: ['vmid']
+
+    - name: Salva il VMID come commento dentro vars.yml
+      delegate_to: localhost
+      ansible.builtin.lineinfile:
+        path: "../../vars.yml"
+        regexp: '^lxc_vmid:'  
+        line: "lxc_vmid: {{ pve_next_vmid.stdout | trim }}"
+        create: yes
+      tags: ['vmid']

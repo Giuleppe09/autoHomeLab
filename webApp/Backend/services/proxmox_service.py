@@ -1,12 +1,38 @@
 import os
+import subprocess
 import requests
 import urllib3
 import yaml
+from services.inventory_service import InventoryService
 
 # Disabilita i warning per i certificati SSL autofirmati di Proxmox
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class ProxmoxService:
+
+    def init_connection(self, pve_ip, base_dir):
+        """Esegue i playbook iniziali di connessione e setup autenticazione."""
+        inventory_path = InventoryService.generate_inventory(pve_ip)
+        if not inventory_path:
+            raise Exception("Impossibile generare l'inventory Ansible centralizzato.")
+
+        playbooks = [
+            "../../architecture/connection/00_get_proxmox_info.yml",
+            "../../architecture/connection/0_setup_auth.yml"
+        ]
+
+        for playbook in playbooks:
+            playbook_path = os.path.abspath(os.path.join(base_dir, playbook))
+            
+            result = subprocess.run(
+                ['ansible-playbook', '-i', inventory_path, playbook_path],
+                capture_output=True,
+                text=True
+            )
+            
+            if result.returncode != 0:
+                raise Exception(f"Fallimento nello script {os.path.basename(playbook)}:\n{result.stderr}\n{result.stdout}")
+
     @staticmethod
     def get_detailed_storages():
         """
