@@ -1,6 +1,7 @@
 import os
 import subprocess
 import requests
+import json
 import urllib3
 import yaml
 from services.inventory_service import InventoryService
@@ -9,6 +10,19 @@ from services.inventory_service import InventoryService
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class ProxmoxService:
+
+    def check_status(self, pve_ip):
+        """Verifica se il nodo Proxmox è online tramite un ping."""
+        if not pve_ip:
+            return False
+            
+        import platform
+        ping_cmd = ['ping', '-c', '1', '-W', '1', pve_ip]
+        if platform.system() == "Windows":
+            ping_cmd = ['ping', '-n', '1', '-w', '1000', pve_ip]
+            
+        result = subprocess.run(ping_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return result.returncode == 0
 
     def init_connection(self, pve_ip, base_dir):
         """Esegue i playbook iniziali di connessione e setup autenticazione."""
@@ -33,61 +47,72 @@ class ProxmoxService:
             if result.returncode != 0:
                 raise Exception(f"Fallimento nello script {os.path.basename(playbook)}:\n{result.stderr}\n{result.stdout}")
 
-    @staticmethod
-    def get_detailed_storages():
+    def get_detailed_storages(self):
         """
-        Interroga l'API di Proxmox e restituisce i dettagli di capacità
-        totale e disponibile per ogni storage attivo.
+        Esegue lo script Ansible per interrogare gli storage tramite CLI (pvesh)
+        e restituisce i dettagli di capacità totale e disponibile, divisi per tipologia.
         """
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        vars_path = os.path.abspath(os.path.join(base_dir, "..", "..", "architecture", "vars.yml"))
+        architecture_path = os.path.abspath(os.path.join(base_dir, "..", "..", "..", "architecture"))
+        vars_path = os.path.join(architecture_path, "vars.yml")
         
         try:
             with open(vars_path, 'r') as f:
                 vars_data = yaml.safe_load(f) or {}
             
             pve_host = vars_data.get('proxmox_api_host')
-            pve_user = vars_data.get('proxmox_api_user')
-            pve_password = vars_data.get('proxmox_api_password')
-            pve_node = vars_data.get('proxmox_node', 'pve')
             
-            if not pve_host or not pve_user or not pve_password:
-                return {"success": False, "error": "Credenziali Proxmox mancanti in vars.yml", "storages": []}
+            if not pve_host:
+                return {"success": False, "error": "IP Proxmox non trovato in vars.yml", "template_storages": [], "disk_storages": []}
 
-            # 1. Richiesta del Ticket di Autenticazione
-            auth_url = f"https://{pve_host}:8006/api2/json/access/ticket"
-            auth_res = requests.post(auth_url, data={'username': pve_user, 'password': pve_password}, verify=False, timeout=5)
-            auth_res.raise_for_status()
-            auth_data = auth_res.json()['data']
+            # 1. Eseguiamo il playbook Ansible in SSH per evitare i blocchi della porta 8006
+            inventory_path = InventoryService.generate_inventory(pve_host)
+            playbook_path = os.path.join(architecture_path, "connection", "01_get_storages.yml")
             
-            headers = {'CSRFPreventionToken': auth_data['CSRFPreventionToken']}
-            cookies = {'PVEAuthCookie': auth_data['ticket']}
+            result = subprocess.run(
+                ['ansible-playbook', '-i', inventory_path, playbook_path],
+                capture_output=True,
+                text=True
+            )
             
-            # 2. Interrogazione degli storage del nodo
-            storage_url = f"https://{pve_host}:8006/api2/json/nodes/{pve_node}/storage"
-            storage_res = requests.get(storage_url, headers=headers, cookies=cookies, verify=False, timeout=5)
-            storage_res.raise_for_status()
-            raw_storages = storage_res.json()['data']
+            if result.returncode != 0:
+                err_msg = result.stderr if result.stderr else result.stdout
+                return {"success": False, "error": f"Fallimento script Ansible:\n{err_msg}", "template_storages": [], "disk_storages": []}
+
+            # 2. Leggiamo il JSON esportato
+            storages_file = os.path.abspath(os.path.join(architecture_path, "..", "proxmox_storages.json"))
+            with open(storages_file, 'r') as f:
+                raw_storages = json.load(f)
             
-            formatted_storages = []
+            template_storages = []
+            disk_storages = []
+            
             for s in raw_storages:
-                # Mostriamo solo gli storage attivi ed escludiamo i bkp/chiavette se non utili
                 if s.get('active') == 1:
-                    total_bytes = s.get('size', 0)
+                    total_bytes = s.get('total', s.get('size', 0))
                     free_bytes = s.get('avail', 0)
                     
-                    # Conversione matematica da Byte a Gigabyte (1024^3)
                     total_gb = round(total_bytes / (1024 ** 3), 1)
                     free_gb = round(free_bytes / (1024 ** 3), 1)
                     
-                    formatted_storages.append({
+                    storage_info = {
                         "name": s['storage'],
                         "type": s['type'],
                         "total_gb": total_gb,
                         "free_gb": free_gb
-                    })
+                    }
+                    
+                    content = s.get('content', '')
+                    if 'vztmpl' in content:
+                        template_storages.append(storage_info)
+                    if 'rootdir' in content:
+                        disk_storages.append(storage_info)
             
-            return {"success": True, "storages": formatted_storages}
+            return {
+                "success": True, 
+                "template_storages": template_storages,
+                "disk_storages": disk_storages
+            }
             
         except Exception as e:
-            return {"success": False, "error": f"Errore Proxmox API: {str(e)}", "storages": []}
+            return {"success": False, "error": f"Errore Proxmox API: {str(e)}", "template_storages": [], "disk_storages": []}

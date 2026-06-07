@@ -15,19 +15,23 @@ class NfsService:
         self.vars_path = os.path.join(architecture_path, "vars.yml")
 
     def get_available_storages(self, base_dir):
-        """Recupera gli storage disponibili leggendo il file JSON fisico senza usare la sessione."""
+        """Recupera gli storage disponibili interrogando direttamente l'API di Proxmox."""
         try:
-            info = ProxmoxService.read_storages(base_dir)
+            proxmox_service = ProxmoxService()
+            info = proxmox_service.get_detailed_storages()
+            
+            if not info.get('success'):
+                raise Exception(info.get('error'))
+                
             return {
-                'template_storages': info.get('template_storages', ['local']),
-                'disk_storages': info.get('disk_storages', ['local', 'local-lvm'])
+                'template_storages': info.get('template_storages', []),
+                'disk_storages': info.get('disk_storages', [])
             }
         except Exception as e:
             print(f"Errore durante il recupero degli storage per NFS: {e}")
-            # Valori di fallback in caso il file non sia ancora stato generato
             return {
-                'template_storages': ['local'],
-                'disk_storages': ['local', 'local-lvm']
+                'template_storages': [{'name': 'local'}],
+                'disk_storages': [{'name': 'local'}, {'name': 'local-lvm'}]
             }
         
     def _get_proxmox_ip(self):

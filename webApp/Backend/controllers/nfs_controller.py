@@ -41,11 +41,15 @@ class NfsController:
 
     @staticmethod
     def get_storages_api():
-        """ legge direttamente il JSON già generato a inizio setup"""
+        """Restituisce l'elenco degli storage interrogando le API di Proxmox"""
         try:
-            # Usiamo il metodo che hai già scritto nel ProxmoxService per leggere il file fisicamente
-            storages = ProxmoxService.read_storages(base_dir)
-            print(f"Storages letti per API: {storages}")
-            return jsonify(storages), 200
+            proxmox_service = ProxmoxService()
+            result = proxmox_service.get_detailed_storages()
+            
+            if not result.get("success"):
+                return jsonify({"error": result.get("error")}), 500
+                
+            print(f"Storages letti per API: {result}")
+            return jsonify(result), 200
         except Exception as e:
-            return jsonify({"error": f"Impossibile leggere le info di Proxmox: {str(e)}"}), 500
+            return jsonify({"error": f"Impossibile interrogare le info di Proxmox: {str(e)}"}), 500

@@ -20,7 +20,7 @@ class TailscaleService:
             return
 
         # Eseguiamo i 4 script in sequenza
-        playbooks = ["0_setup_auth.yml", "1_create_lxc.yml", "2_install_tailscale.yml", "3_setup_local_pc.yml"]
+        playbooks = ["1_create_lxc.yml", "2_install_tailscale.yml", "3_setup_local_pc.yml"]
         
         env = os.environ.copy()
         env["ANSIBLE_HOST_KEY_CHECKING"] = "False"

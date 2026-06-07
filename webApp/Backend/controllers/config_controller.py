@@ -21,7 +21,8 @@ class ConfigController:
         """Verifica lo stato online del nodo leggendo l'IP da vars.yml"""
         service = ConfigService(base_dir)
         pve_ip = service.get_proxmox_ip()
-        is_online = ProxmoxService.check_status(pve_ip)
+        proxmox_service = ProxmoxService()
+        is_online = proxmox_service.check_status(pve_ip)
         return jsonify({"status": "online" if is_online else "offline"}), 200
 
     @staticmethod
@@ -70,13 +71,18 @@ class ConfigController:
 
     @staticmethod
     def get_storages_api():
-        """Restituisce l'elenco degli storage disponibili leggendo il report JSON generato"""
+        """Restituisce l'elenco degli storage disponibili e il loro spazio interrogando direttamente l'API di Proxmox"""
         try:
-            storages = ProxmoxService.read_storages(base_dir)
-            print("STORAGES TROVATI:", storages)  # Debug log per verificare i dati letti
-            return jsonify(storages), 200
+            proxmox_service = ProxmoxService()
+            result = proxmox_service.get_detailed_storages()
+            
+            if not result.get("success"):
+                return jsonify({"error": result.get("error")}), 500
+                
+            print("STORAGES TROVATI:", result)
+            return jsonify(result), 200
         except Exception as e:
-            return jsonify({"error": f"Impossibile leggere il file dei report storage: {str(e)}"}), 500
+            return jsonify({"error": f"Errore durante l'interrogazione degli storage: {str(e)}"}), 500
 
     @staticmethod
     def save_config(request):
