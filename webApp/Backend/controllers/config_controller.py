@@ -17,6 +17,14 @@ class ConfigController:
         return render_template('config.html')
     
     @staticmethod
+    def render_dashboard():
+        """Renderizza la dashboard di gestione"""
+        template_dir = os.path.abspath(os.path.join(base_dir, '..', 'Front-End', 'html'))
+        if not os.path.exists(os.path.join(template_dir, 'dashboard.html')):
+            return f"ERRORE: dashboard.html non trovato in {template_dir}"
+        return render_template('dashboard.html')
+
+    @staticmethod
     def check_status(request):
         """Verifica lo stato online del nodo leggendo l'IP da vars.yml"""
         service = ConfigService(base_dir)
@@ -99,3 +107,15 @@ class ConfigController:
             return jsonify({"status": "error", "message": str(e)}), 400
         except Exception as e: 
             return jsonify({"status": "error", "message": f"Errore scrittura parametri: {str(e)}"}), 500
+
+    @staticmethod
+    def get_infrastructure_state():
+        """Recupera lo stato attuale dell'infrastruttura (vars.yml) per popolare la Dashboard"""
+        try:
+            vars_path = os.path.abspath(os.path.join(base_dir, "..", "..", "architecture", "vars.yml"))
+            import yaml
+            with open(vars_path, 'r') as f:
+                state = yaml.safe_load(f) or {}
+            return jsonify({"success": True, "state": state}), 200
+        except Exception as e:
+            return jsonify({"success": False, "error": f"Errore lettura stato: {str(e)}"}), 500

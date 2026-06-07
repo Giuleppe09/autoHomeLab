@@ -3,6 +3,10 @@ from controllers.config_controller import ConfigController
 
 config_bp = Blueprint('config_bp', __name__)
 
+@config_bp.route('/dashboard', methods=['GET'])
+def dashboard():
+    return ConfigController.render_dashboard()
+
 @config_bp.route('/api/check_status', methods=['GET'])
 def check_status():
     return ConfigController.check_status(request)
@@ -24,3 +28,7 @@ def scan_ips():
 @config_bp.route('/api/config', methods=['POST'])
 def save_config():
     return ConfigController.save_config(request)
+
+@config_bp.route('/api/infrastructure/state', methods=['GET'])
+def get_infrastructure_state():
+    return ConfigController.get_infrastructure_state()
