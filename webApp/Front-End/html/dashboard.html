@@ -4,59 +4,89 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - HomeLab Manager</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <style>
-        body { background-color: #1a1b26; color: #a9b1d6; font-family: sans-serif; padding: 20px; }
-        h1 { color: #7aa2f7; text-align: center; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 30px; }
-        .card { background: #24283b; padding: 20px; border-radius: 10px; border: 1px solid #414868; }
-        .card h2 { margin-top: 0; color: #9ece6a; }
-        .btn { background-color: #7aa2f7; color: #1a1b26; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; margin-top: 15px; display: inline-block; width: 100%; text-align: center; box-sizing: border-box;}
-        .btn:hover { background-color: #8db0f8; }
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); align-items: center; justify-content: center; }
-        .modal-content { background: #24283b; padding: 30px; border-radius: 10px; width: 450px; border: 1px solid #7aa2f7; }
-        .modal-content h3 { margin-top: 0; color: #7aa2f7; }
-        .form-group { margin-bottom: 15px; }
-        .form-group label { display: block; margin-bottom: 5px; color: #bb9af7; }
-        .form-control { width: 100%; padding: 10px; border-radius: 5px; border: 1px solid #414868; background: #1a1b26; color: #a9b1d6; box-sizing: border-box;}
-        .btn-close { background-color: #f7768e; margin-top: 10px; }
-        .btn-close:hover { background-color: #f890a3; }
+        .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-top: 20px; }
+        .dash-card { background: #24283b; border: 1px solid #414868; border-radius: 8px; padding: 20px; text-align: left; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .dash-card h3 { margin-top: 0; color: #9ece6a; display: flex; align-items: center; gap: 8px; font-size: 1.1em; }
+        .dash-card p { font-size: 0.9em; margin: 10px 0; color: #a9b1d6; }
+        .dash-card strong { color: #c0caf5; font-weight: 600; }
+        .btn-action { width: 100%; margin-top: 15px; background: #7aa2f7; color: #1a1b26; border: none; padding: 10px; border-radius: 5px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .btn-action:hover { background: #89b4fa; }
+        
+        /* Modale Gestione Storage */
+        .storage-info-box { background: #1f2335; padding: 15px; border-radius: 6px; border: 1px solid #414868; margin-bottom: 15px; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>🎛️ Dashboard Infrastruttura</h1>
-        <div class="grid" id="dashboard-grid">
-            <p>⏳ Caricamento stato infrastruttura e Container...</p>
+    <div class="container" style="max-width: 1000px;">
+        <header>
+            <h1>🎛️ Dashboard Infrastruttura</h1>
+            <p>Panoramica dei nodi e dei servizi attivi</p>
+        </header>
+
+        <div class="dashboard-grid">
+            <div class="dash-card">
+                <h3>🖥️ Proxmox Node</h3>
+                <p><strong>IP API:</strong> <span id="dash-pve-ip">Caricamento...</span></p>
+                <p><strong>Utente API:</strong> <span id="dash-pve-user">-</span></p>
+            </div>
+
+            <div class="dash-card">
+                <h3 style="color: #7aa2f7;">🌐 Gateway VPN (Tailscale)</h3>
+                <p><strong>IP LXC:</strong> <span id="dash-ts-ip">-</span></p>
+                <p><strong>VMID:</strong> <span id="dash-ts-vmid">-</span></p>
+            </div>
+
+            <div class="dash-card">
+                <h3 style="color: #e0af68;">💽 NFS Storage Server</h3>
+                <p><strong>IP LXC:</strong> <span id="dash-nfs-ip">-</span></p>
+                <p><strong>Mount Principale:</strong> <span id="dash-nfs-mount">-</span></p>
+            </div>
+
+            <div class="dash-card" style="border-color: #9ece6a; position: relative;">
+                <h3>☁️ Nextcloud (K3s)</h3>
+                <p><strong>Admin:</strong> <span id="dash-nc-admin">-</span></p>
+                <p><strong>PVC Primario:</strong> <span id="dash-nc-pvc">-</span> GB</p>
+                <p style="margin-top: 15px;">
+                    <a id="dash-nc-link" href="#" target="_blank" style="color: #9ece6a; font-weight: bold; text-decoration: none;">🔗 Apri Web UI Nextcloud ➡️</a>
+                </p>
+                <button class="btn-action" onclick="openStorageModal()">⚙️ Gestisci Storage</button>
+            </div>
         </div>
     </div>
 
-    <!-- Modale Gestione Storage Nextcloud -->
-    <div id="storage-modal" class="modal">
-        <div class="modal-content">
-            <h3>💽 Espandi Storage Nextcloud</h3>
-            <p style="font-size: 0.9em; margin-bottom: 20px;">Aggiungi un nuovo volume NFS per espandere la capacità di Nextcloud.</p>
-            
-            <div class="form-group">
-                <label for="new_storage_select">Seleziona Storage su Proxmox</label>
-                <select id="new_storage_select" class="form-control">
-                    <option value="">Caricamento storage in corso...</option>
-                </select>
+    <div id="storage-modal" class="modal hidden">
+        <div class="modal-content card">
+            <h2>⚙️ Gestione Storage Nextcloud</h2>
+            <div id="storage-loading" style="text-align: center; color: #e0af68; margin: 20px 0;">
+                ⏳ Scansione dei dischi Proxmox in corso...
             </div>
             
-            <div class="form-group" id="slider-container" style="display: none;">
-                <label>Spazio da Aggiungere: <span id="new-storage-val" style="color:#7aa2f7; font-weight:bold;">10</span> GB</label>
-                <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
-                    <span>5GB</span>
-                    <input type="range" id="new_storage_size" class="form-control" min="5" max="100" value="10" style="padding:0;">
-                    <span id="new-range-max">100GB</span>
+            <div id="storage-controls" class="hidden">
+                <div class="storage-info-box">
+                    <p style="margin:0 0 10px 0;">📡 <b>Stato Storage Proxmox (NFS Mount)</b></p>
+                    <p style="margin:5px 0;">Pool Utilizzato: <strong id="modal-pool-name">-</strong></p>
+                    <p style="margin:5px 0; color: #9ece6a;">Spazio Libero Reale: <strong id="modal-free-space">-</strong> GB</p>
                 </div>
-            </div>
 
-            <button class="btn" id="btn-add-storage" onclick="addNextcloudStorage()">➕ Provisiona su NFS</button>
-            <button class="btn btn-close" onclick="closeModal()">Annulla</button>
+                <div class="form-group">
+                    <label>Nuova Quota PVC per Nextcloud (GB):</label>
+                    <input type="number" id="new_pvc_size" class="form-control" placeholder="Es. 100">
+                    <small style="color: #a9b1d6;">Taglio del NUOVO disco da aggiungere. (Dischi attuali: <span id="modal-current-pvc"></span>).</small>
+                </div>
+
+
+                <div class="actions" style="display: flex; gap: 10px; margin-top: 20px;">
+                    <button type="button" onclick="closeStorageModal()" class="btn-secondary" style="flex: 1;">Annulla</button>
+                    <button type="button" onclick="expandStorage()" id="btn-expand" class="btn-primary" style="flex: 1; background-color: #9ece6a; color: #1a1b26;">Applica Espansione</button>
+                </div>
+                
+                <div id="resize-console" class="hidden" style="background-color: #000; color: #0f0; font-family: monospace; padding: 10px; height: 150px; overflow-y: auto; text-align: left; border-radius: 5px; margin-top: 15px; font-size: 0.85em;"></div>
+            </div>
         </div>
     </div>
 
-    <script src="/static/js/dashboard.js"></script>
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 </body>
 </html>

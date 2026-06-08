@@ -7,9 +7,8 @@ class ServicesLayerService:
     
     @staticmethod
     def save_nextcloud_config(data):
-        """Smista i dati del payload dinamico per salvarli nei file di configurazione"""
+        """Smista i dati iniziali convertendo la quota in una lista di volumi"""
         dao = K3sDAO()
-        
         vars_data = {}
         secrets_data = {}
         
@@ -19,8 +18,36 @@ class ServicesLayerService:
             else:
                 vars_data[key] = value
         
+        # Intercettiamo la dimensione iniziale e la formattiamo come primo elemento di una lista
+        if 'nextcloud_storage_size' in vars_data:
+            size_val = str(vars_data.pop('nextcloud_storage_size')).strip()
+            if not size_val.endswith('Gi'):
+                size_val += 'Gi'
+            vars_data['nextcloud_storage_volumes'] = [size_val]
+
         dao.save_k3s_config(vars_data, secrets_data)
 
+    @staticmethod
+    def add_nextcloud_storage_volume(new_size):
+        """Recupera la configurazione attuale e aggiunge una nuova voce alla lista"""
+        dao = K3sDAO()
+        existing_vars, _ = dao.get_k3s_config()
+        
+        # Estrae la lista esistente o ne crea una nuova se assente
+        volumes = existing_vars.get('nextcloud_storage_volumes', [])
+        if isinstance(volumes, str):
+            volumes = [volumes]
+            
+        if not new_size.endswith('Gi'):
+            new_size += 'Gi'
+            
+        volumes.append(new_size)
+        existing_vars['nextcloud_storage_volumes'] = volumes
+        
+        # Persiste l'array aggiornato in vars.yml
+        dao.save_k3s_config(existing_vars, {})
+
+        
     @staticmethod
     def execute_nextcloud_stream(inventory_path):
         """Esegue in streaming il playbook di Nextcloud e calcola l'URL finale"""

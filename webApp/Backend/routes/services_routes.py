@@ -14,3 +14,7 @@ def save_nextcloud_config():
 @services_bp.route('/api/services/nextcloud/setup', methods=['POST'])
 def run_nextcloud_setup():
     return ServicesController.run_nextcloud_setup()
+
+@services_bp.route('/api/services/nextcloud/expand_storage', methods=['POST'])
+def expand_nextcloud_storage():
+    return ServicesController.expand_nextcloud_storage()

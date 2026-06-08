@@ -1,5 +1,5 @@
 ---
-- name: Deployment del Service Layer (Nextcloud)
+- name: Deployment del Service Layer (Nextcloud con Volumi Multipli)
   hosts: k3s_server
   become: yes
   vars_files:
@@ -29,11 +29,13 @@
             resources:
               requests:
                 storage: 5Gi
+          {# Ciclo dinamico sulla lista dei volumi dati #}
+          {% for size in nextcloud_storage_volumes | default(['50Gi']) %}
           ---
           apiVersion: v1
           kind: PersistentVolumeClaim
           metadata:
-            name: nextcloud-userdata-pvc
+            name: nextcloud-userdata-pvc-{{ loop.index }}
             namespace: default
           spec:
             accessModes:
@@ -41,7 +43,8 @@
             storageClassName: nfs-storage
             resources:
               requests:
-                storage: "{{ nextcloud_storage_size | trim }}Gi"
+                storage: {{ size | quote }}
+          {% endfor %}
 
     - name: 3. Genera il manifesto per il Deployment e il Service
       ansible.builtin.copy:
@@ -69,23 +72,28 @@
                       - containerPort: 80
                     env:
                       - name: NEXTCLOUD_ADMIN_USER
-                        value: "{{ nextcloud_user | trim }}"
+                        value: {{ nextcloud_admin_user | quote }}
                       - name: NEXTCLOUD_ADMIN_PASSWORD
-                        value: "{{ nextcloud_password | trim }}"
+                        value: {{ nextcloud_admin_password | quote }}
                       - name: NEXTCLOUD_TRUSTED_DOMAINS
-                        value: "{{ k3s_agent_ip.split('/')[0] }}"
+                        value: {{ k3s_agent_ip.split('/')[0] | quote }}
                     volumeMounts:
                       - name: nextcloud-config
                         mountPath: /var/www/html/config
-                      - name: nextcloud-data
-                        mountPath: /var/www/html/data
+                      {# Genera un mount point differente per ogni volume aggiunto #}
+                      {% for size in nextcloud_storage_volumes | default(['50Gi']) %}
+                      - name: nextcloud-data-{{ loop.index }}
+                        mountPath: /var/www/html/data{{ "" if loop.index == 1 else loop.index }}
+                      {% endfor %}
                 volumes:
                   - name: nextcloud-config
                     persistentVolumeClaim:
                       claimName: nextcloud-config-pvc
-                  - name: nextcloud-data
+                  {% for size in nextcloud_storage_volumes | default(['50Gi']) %}
+                  - name: nextcloud-data-{{ loop.index }}
                     persistentVolumeClaim:
-                      claimName: nextcloud-userdata-pvc
+                      claimName: nextcloud-userdata-pvc-{{ loop.index }}
+                  {% endfor %}
           ---
           apiVersion: v1
           kind: Service
@@ -108,5 +116,10 @@
 
     - name: 5. Applica il manifesto di Deployment al cluster
       ansible.builtin.command: kubectl apply -f /root/k8s-manifests/nextcloud/nextcloud-deployment.yaml
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+    - name: 6. Attendi l'aggiornamento controllato dei Pod (Rolling Update live)
+      ansible.builtin.command: kubectl rollout status deployment/nextcloud -n default --timeout=300s
       environment:
         KUBECONFIG: /etc/rancher/k3s/k3s.yaml

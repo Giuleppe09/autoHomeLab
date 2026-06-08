@@ -1,106 +1,181 @@
-document.addEventListener('DOMContentLoaded', loadDashboard);
-let availableStorages = [];
+let currentState = {};
 
-async function loadDashboard() {
-    const grid = document.getElementById('dashboard-grid');
+document.addEventListener('DOMContentLoaded', loadDashboardData);
+
+async function loadDashboardData() {
     try {
         const response = await fetch('/api/infrastructure/state');
         const data = await response.json();
         
-        if (response.ok && data.state) {
-            const state = data.state;
-            grid.innerHTML = '';
+        if (data.success && data.state) {
+            currentState = data.state;
             
-            // 🖥️ Proxmox
-            grid.innerHTML += `<div class="card">
-                <h2>🖥️ Proxmox Node</h2>
-                <p><strong>IP API:</strong> ${state.proxmox_api_host || 'N/D'}</p>
-                <p><strong>Utente API:</strong> ${state.proxmox_api_user || 'N/D'}</p>
-            </div>`;
+            // Popola Proxmox
+            document.getElementById('dash-pve-ip').innerText = currentState.proxmox_api_host || '-';
+            document.getElementById('dash-pve-user').innerText = currentState.proxmox_api_user || '-';
             
-            // 🌐 Tailscale
-            if (state.lxc_ip) {
-                grid.innerHTML += `<div class="card">
-                    <h2>🌐 Gateway VPN (Tailscale)</h2>
-                    <p><strong>IP LXC:</strong> ${state.lxc_ip}</p>
-                    <p><strong>VMID:</strong> ${state.lxc_vmid}</p>
-                </div>`;
+            // Popola Tailscale
+            document.getElementById('dash-ts-ip').innerText = currentState.lxc_ip || '-';
+            document.getElementById('dash-ts-vmid').innerText = currentState.lxc_vmid || '-';
+            
+            // Popola NFS
+            document.getElementById('dash-nfs-ip').innerText = currentState.nfs_ip || '-';
+            document.getElementById('dash-nfs-mount').innerText = currentState.host_mount_path || '-';
+            
+            // Popola Nextcloud e Link
+            document.getElementById('dash-nc-admin').innerText = currentState.nextcloud_admin_user || '-';
+            
+            // LOGICA MULTI-VOLUME: Unisce l'array dei dischi con un "+"
+            let pvcDisplay = '-';
+            if (currentState.nextcloud_storage_volumes && Array.isArray(currentState.nextcloud_storage_volumes) && currentState.nextcloud_storage_volumes.length > 0) {
+                pvcDisplay = currentState.nextcloud_storage_volumes.join(' + ');
+            } else if (currentState.nextcloud_storage_volumes && typeof currentState.nextcloud_storage_volumes === 'string') {
+                pvcDisplay = currentState.nextcloud_storage_volumes;
+            } else if (currentState.nextcloud_data_storage) {
+                // Fallback nel caso in cui la variabile vecchia sia ancora presente
+                pvcDisplay = currentState.nextcloud_data_storage;
             }
             
-            // 🗄️ NFS
-            if (state.nfs_ip) {
-                grid.innerHTML += `<div class="card">
-                    <h2>🗄️ NFS Storage Server</h2>
-                    <p><strong>IP LXC:</strong> ${state.nfs_ip}</p>
-                    <p><strong>Mount Principale:</strong> ${state.host_mount_path || 'N/D'}</p>
-                </div>`;
-            }
+            // Rimpiazza 'Gi' con 'GB' per renderlo più bello esteticamente sulla dashboard
+            document.getElementById('dash-nc-pvc').innerText = pvcDisplay.replace(/Gi/g, ' GB');
             
-            // ☁️ Nextcloud
-            if (state.nextcloud_user) {
-                grid.innerHTML += `<div class="card">
-                    <h2>☁️ Nextcloud (K3s)</h2>
-                    <p><strong>Admin:</strong> ${state.nextcloud_user}</p>
-                    <p><strong>PVC Primario:</strong> ${state.nextcloud_storage_size || 0} GB su ${state.nextcloud_disk_storage}</p>
-                    <button class="btn" onclick="openStorageModal()">⚙️ Gestisci Storage</button>
-                </div>`;
-            }
-        } else {
-            grid.innerHTML = `<p style="color: #f7768e;">❌ Errore nel caricamento dello stato.</p>`;
-        }
-    } catch (e) {
-        grid.innerHTML = `<p style="color: #f7768e;">❌ Impossibile connettersi al backend.</p>`;
-    }
-}
-
-async function openStorageModal() {
-    document.getElementById('storage-modal').style.display = 'flex';
-    const select = document.getElementById('new_storage_select');
-    const sliderContainer = document.getElementById('slider-container');
-    const inputSize = document.getElementById('new_storage_size');
-    const labelVal = document.getElementById('new-storage-val');
-    const maxLabel = document.getElementById('new-range-max');
-    
-    try {
-        // Richiamiamo la nostra robusta API degli storage su Proxmox!
-        const res = await fetch('/api/storages');
-        const data = await res.json();
-        
-        if (res.ok && data.disk_storages) {
-            availableStorages = data.disk_storages;
-            select.innerHTML = '';
-            
-            availableStorages.forEach(s => {
-                select.innerHTML += `<option value="${s.name}">${s.name} (${s.free_gb} GB liberi su ${s.total_gb} GB)</option>`;
-            });
-            
-            sliderContainer.style.display = 'block';
-            
-            const updateSlider = () => {
-                const storage = availableStorages.find(s => s.name === select.value);
-                if (storage) {
-                    const max = Math.floor(storage.free_gb);
-                    inputSize.max = max > 5 ? max : 5;
-                    maxLabel.innerText = inputSize.max + "GB";
-                    if (parseInt(inputSize.value) > inputSize.max) inputSize.value = inputSize.max;
-                    labelVal.innerText = inputSize.value;
+            if (currentState.k3s_agent_ip) {
+                const agentIp = currentState.k3s_agent_ip.split('/')[0];
+                const ncUrl = `http://${agentIp}:30080`;
+                const linkObj = document.getElementById('dash-nc-link');
+                if(linkObj) {
+                    linkObj.href = ncUrl;
+                    // Mostriamo l'URL ma lo manteniamo esteticamente pulito
+                    linkObj.innerText = `🔗 Apri Web UI Nextcloud ➡️`;
                 }
-            };
-            
-            select.onchange = updateSlider;
-            inputSize.oninput = () => labelVal.innerText = inputSize.value;
-            updateSlider();
+            }
         }
-    } catch (e) {
-        select.innerHTML = '<option value="">Errore API Storage</option>';
+    } catch (error) {
+        console.error("Errore caricamento stato della Dashboard:", error);
     }
 }
 
-function closeModal() { 
-    document.getElementById('storage-modal').style.display = 'none'; 
+// --- LOGICA MODALE STORAGE ---
+async function openStorageModal() {
+    document.getElementById('storage-modal').classList.remove('hidden');
+    document.getElementById('storage-loading').classList.remove('hidden');
+    document.getElementById('storage-controls').classList.add('hidden');
+    document.getElementById('resize-console').classList.add('hidden');
+    document.getElementById('resize-console').innerText = "";
+    document.getElementById('new_pvc_size').value = ""; // Resetta l'input per il nuovo disco
+    
+    // Mostra i volumi attuali uniti col +
+    let currentVolumes = ["50Gi"];
+    if (currentState.nextcloud_storage_volumes && Array.isArray(currentState.nextcloud_storage_volumes)) {
+        currentVolumes = currentState.nextcloud_storage_volumes;
+    } else if (currentState.nextcloud_data_storage) {
+        currentVolumes = [currentState.nextcloud_data_storage];
+    }
+    document.getElementById('modal-current-pvc').innerText = currentVolumes.join(' + ').replace(/Gi/g, ' GB');
+
+    // Richiede gli storage aggiornati a Proxmox
+    try {
+        const response = await fetch('/api/storages');
+        const data = await response.json();
+        
+        if (response.ok && data.disk_storages) {
+            // Cerca lo storage che stiamo effettivamente usando per NFS (host_mount_path)
+            const nfsPoolName = currentState.host_mount_path || "local-lvm";
+            const targetStorage = data.disk_storages.find(s => s.name === nfsPoolName) || data.disk_storages[0];
+            
+            if (targetStorage) {
+                document.getElementById('modal-pool-name').innerText = targetStorage.name;
+                document.getElementById('modal-free-space').innerText = targetStorage.free_gb;
+                // Imposta il massimo espandibile
+                document.getElementById('new_pvc_size').max = targetStorage.free_gb;
+            }
+        }
+    } catch (e) {
+        console.error("Errore lettura dischi da Proxmox", e);
+        document.getElementById('modal-free-space').innerText = "Errore API";
+    } finally {
+        document.getElementById('storage-loading').classList.add('hidden');
+        document.getElementById('storage-controls').classList.remove('hidden');
+    }
 }
 
-function addNextcloudStorage() {
-    const size = document.getElementById('new_storage_size').value;
-    alert(`Questa azione lancerà un playbook Ansible che modificherà l'LXC NFS per aggiungere un mount da ${size}GB e genererà un nuovo PVC in K3s! (Funzionalità da implementare nel backend)`);
+function closeStorageModal() {
+    document.getElementById('storage-modal').classList.add('hidden');
+}
+
+async function expandStorage() {
+    const newSize = document.getElementById('new_pvc_size').value;
+    const maxFree = parseFloat(document.getElementById('new_pvc_size').max);
+    
+    // Validazioni
+    if (!newSize || isNaN(newSize) || parseInt(newSize) <= 0) {
+        alert("Inserisci un valore valido in GB per il nuovo disco.");
+        return;
+    }
+
+    if (maxFree && parseInt(newSize) > maxFree) {
+        alert(`Attenzione: Lo spazio richiesto (${newSize} GB) supera lo spazio fisico libero sul disco Proxmox (${maxFree} GB).`);
+        return;
+    }
+
+    const btn = document.getElementById('btn-expand');
+    const consoleOut = document.getElementById('resize-console');
+    
+    btn.disabled = true;
+    btn.innerText = "⏳ Aggiunta in corso...";
+    consoleOut.classList.remove('hidden');
+    consoleOut.innerText = "Avvio deployment Ansible per il nuovo Volume...\n\n";
+
+    try {
+        const response = await fetch('/api/services/nextcloud/expand_storage', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ new_size: newSize }) // Inviamo solo il numero, es: "20"
+        });
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let buffer = "";
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop(); // Conserva l'ultima riga se incompleta
+            
+            for (const line of lines) {
+                if (!line.trim()) continue;
+                try {
+                    const parsed = JSON.parse(line);
+                    
+                    if (parsed.log) {
+                        consoleOut.innerText += parsed.log;
+                        consoleOut.scrollTop = consoleOut.scrollHeight; // Autoscroll verso il basso
+                    }
+                    
+                    if (parsed.success === true) {
+                        btn.innerText = "✅ Volume Aggiunto";
+                        
+                        // Dopo 2 secondi chiude il modale e ricarica i dati dietro le quinte
+                        setTimeout(() => {
+                            closeStorageModal();
+                            loadDashboardData(); 
+                            btn.disabled = false;
+                            btn.innerText = "Applica Espansione";
+                        }, 2000);
+                    } else if (parsed.success === false) {
+                        throw new Error("Errore durante l'esecuzione del Playbook Ansible.");
+                    }
+                } catch (e) {
+                    // Ignoriamo gli errori di parsing JSON durante lo stream
+                }
+            }
+        }
+    } catch (error) {
+        consoleOut.innerText += "\n❌ Errore durante l'aggiunta: " + error.message;
+        btn.disabled = false;
+        btn.innerText = "Riprova Aggiunta Volume";
+    }
 }
