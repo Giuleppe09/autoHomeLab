@@ -41,7 +41,7 @@
             storageClassName: nfs-storage
             resources:
               requests:
-                storage: {{ nextcloud_data_storage | quote }} # <--- ORA È COMPLETAMENTE DINAMICO!
+                storage: "{{ nextcloud_storage_size | trim }}Gi"
 
     - name: 3. Genera il manifesto per il Deployment e il Service
       ansible.builtin.copy:
@@ -69,11 +69,11 @@
                       - containerPort: 80
                     env:
                       - name: NEXTCLOUD_ADMIN_USER
-                        value: {{ nextcloud_admin_user | quote }}
+                        value: "{{ nextcloud_user | trim }}"
                       - name: NEXTCLOUD_ADMIN_PASSWORD
-                        value: {{ nextcloud_admin_password | quote }}
+                        value: "{{ nextcloud_password | trim }}"
                       - name: NEXTCLOUD_TRUSTED_DOMAINS
-                        value: {{ k3s_agent_ip.split('/')[0] | quote }}
+                        value: "{{ k3s_agent_ip.split('/')[0] }}"
                     volumeMounts:
                       - name: nextcloud-config
                         mountPath: /var/www/html/config

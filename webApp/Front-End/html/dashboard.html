@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - HomeLab Manager</title>
+    <style>
+        body { background-color: #1a1b26; color: #a9b1d6; font-family: sans-serif; padding: 20px; }
+        h1 { color: #7aa2f7; text-align: center; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 30px; }
+        .card { background: #24283b; padding: 20px; border-radius: 10px; border: 1px solid #414868; }
+        .card h2 { margin-top: 0; color: #9ece6a; }
+        .btn { background-color: #7aa2f7; color: #1a1b26; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; margin-top: 15px; display: inline-block; width: 100%; text-align: center; box-sizing: border-box;}
+        .btn:hover { background-color: #8db0f8; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); align-items: center; justify-content: center; }
+        .modal-content { background: #24283b; padding: 30px; border-radius: 10px; width: 450px; border: 1px solid #7aa2f7; }
+        .modal-content h3 { margin-top: 0; color: #7aa2f7; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; color: #bb9af7; }
+        .form-control { width: 100%; padding: 10px; border-radius: 5px; border: 1px solid #414868; background: #1a1b26; color: #a9b1d6; box-sizing: border-box;}
+        .btn-close { background-color: #f7768e; margin-top: 10px; }
+        .btn-close:hover { background-color: #f890a3; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎛️ Dashboard Infrastruttura</h1>
+        <div class="grid" id="dashboard-grid">
+            <p>⏳ Caricamento stato infrastruttura e Container...</p>
+        </div>
+    </div>
+
+    <!-- Modale Gestione Storage Nextcloud -->
+    <div id="storage-modal" class="modal">
+        <div class="modal-content">
+            <h3>💽 Espandi Storage Nextcloud</h3>
+            <p style="font-size: 0.9em; margin-bottom: 20px;">Aggiungi un nuovo volume NFS per espandere la capacità di Nextcloud.</p>
+            
+            <div class="form-group">
+                <label for="new_storage_select">Seleziona Storage su Proxmox</label>
+                <select id="new_storage_select" class="form-control">
+                    <option value="">Caricamento storage in corso...</option>
+                </select>
+            </div>
+            
+            <div class="form-group" id="slider-container" style="display: none;">
+                <label>Spazio da Aggiungere: <span id="new-storage-val" style="color:#7aa2f7; font-weight:bold;">10</span> GB</label>
+                <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
+                    <span>5GB</span>
+                    <input type="range" id="new_storage_size" class="form-control" min="5" max="100" value="10" style="padding:0;">
+                    <span id="new-range-max">100GB</span>
+                </div>
+            </div>
+
+            <button class="btn" id="btn-add-storage" onclick="addNextcloudStorage()">➕ Provisiona su NFS</button>
+            <button class="btn btn-close" onclick="closeModal()">Annulla</button>
+        </div>
+    </div>
+
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>

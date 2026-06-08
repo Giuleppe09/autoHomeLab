@@ -44,22 +44,12 @@ class NfsService:
             print(f"Errore durante la lettura di {self.vars_path}: {e}")
             return None
 
-    def execute_setup_stream(self):
-        # 1. Recupero dell'IP gestito interamente dal Service
-        pve_ip = self._get_proxmox_ip()
-        if not pve_ip:
-            yield json.dumps({"success": False, "log": f"\n❌ Errore: Impossibile recuperare 'proxmox_api_host' da {self.vars_path}.\n"}) + "\n"
-            return
-            
-        print(f"Generazione inventory.ini centralizzato per NFS usando l'IP Proxmox: {pve_ip}")
-        
-        # 2. Generazione dell'inventory
-        inventory_path = InventoryService.generate_inventory(pve_ip)
+    def execute_setup_stream(self, inventory_path):
+        # 1. Usiamo direttamente l'inventory path passato dal Controller
         if not inventory_path:
-            yield json.dumps({"success": False, "log": "\n❌ Errore durante la generazione dell'inventory Ansible centralizzato.\n"}) + "\n"
+            yield json.dumps({"success": False, "log": "\n❌ Errore: inventory_path mancante.\n"}) + "\n"
             return
 
-        # 3. I playbook per la configurazione del NAS/NFS
         playbooks = ["1_create_nfs_lxc.yml", "2_configure_nfs.yml"]
         
         env = os.environ.copy()

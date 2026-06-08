@@ -43,15 +43,21 @@
             </form>
         </section>
 
-        <section id="setup-section" class="card hidden" style="text-align: center;">
+       <section id="setup-section" class="card hidden" style="text-align: center;">
             <h2 id="setup-title">🚀 Deploy Servizio</h2>
             <p>Parametri registrati con successo. Clicca Avvia per lanciare il Playbook Ansible.</p>
             
+            <div id="success-url-container" class="hidden" style="background-color: #1c1f30; border: 1px solid #9ece6a; padding: 15px; border-radius: 8px; margin-bottom: 20px; color: #9ece6a;">
+                <p>🎉 <b>Installazione completata con successo!</b></p>
+                <p>Puoi accedere a Nextcloud al seguente indirizzo: <a id="nextcloud-link" href="#" target="_blank" style="color: #7aa2f7; font-weight: bold; text-decoration: underline;"></a></p>
+            </div>
+
             <button id="btn-run" class="btn-primary" onclick="runServiceSetup()">Avvia Deployment</button>
-            <button id="btn-home" class="btn-secondary hidden" onclick="window.location.href='/'" disabled style="margin-left: 10px;">Torna alla Dashboard</button>
+            <button id="btn-home" class="btn-secondary hidden" onclick="window.location.href='/dashboard'" style="margin-left: 10px;">Torna alla Dashboard</button>
 
             <div id="console-output" class="hidden">In attesa dei processi...</div>
         </section>
+        
     </div>
     <script src="/static/js/services.js"></script>
 </body>

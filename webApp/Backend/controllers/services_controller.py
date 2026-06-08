@@ -1,14 +1,17 @@
 import os
-from flask import jsonify, Response, request, send_from_directory
+from flask import jsonify, Response, request, send_from_directory, stream_with_context
 from services.services_layer_service import ServicesLayerService
+from services.config_service import ConfigService
+from services.inventory_service import InventoryService
+
+base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 class ServicesController:
     
     @staticmethod
     def render_page():
         """Serve la risorsa statica HTML per l'interfaccia dei servizi"""
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        html_dir = os.path.abspath(os.path.join(base_dir, "..", "..", "Front-End", "html"))
+        html_dir = os.path.abspath(os.path.join(base_dir, "..", "Front-End", "html"))
         return send_from_directory(html_dir, 'services.html')
 
     @staticmethod
@@ -22,7 +25,6 @@ class ServicesController:
             if not username or not password:
                 return jsonify({"success": False, "message": "Dati di autenticazione Nextcloud incompleti"}), 400
             
-            # Passiamo l'intero payload (incluso nextcloud_storage_size e disk_storage) al Service
             ServicesLayerService.save_nextcloud_config(data)
             
             return jsonify({"success": True, "message": "Configurazione applicativa registrata"}), 200
@@ -33,8 +35,15 @@ class ServicesController:
     def run_nextcloud_setup():
         """Innesca lo stream reale dei log di Ansible"""
         try:
+            # 1. Il Controller orchestra: recupera IP e genera l'inventory
+            config_service = ConfigService(base_dir)
+            pve_ip = config_service.get_proxmox_ip()
+            
+            inventory_path = InventoryService.generate_inventory(pve_ip)
+
+            # 2. Passa lo stream pronto al Service
             return Response(
-                ServicesLayerService.execute_nextcloud_stream(), 
+                stream_with_context(ServicesLayerService.execute_nextcloud_stream(inventory_path)), 
                 mimetype='application/json',
                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
             )

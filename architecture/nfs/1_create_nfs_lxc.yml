@@ -66,27 +66,31 @@
       ansible.builtin.command: "pveam download {{ nfs_template_storage | trim }} ubuntu-24.04-standard_24.04-2_amd64.tar.zst"
       when: template_check.rc != 0
 
-    - name: Rilascia il container LXC Privilegiato tramite API Proxmox
-      delegate_to: localhost
-      community.proxmox.proxmox:
-        api_host: "{{ proxmox_api_host }}"
-        api_user: "{{ proxmox_api_user }}"
-        api_token_id: "{{ proxmox_api_token_id }}"
-        api_token_secret: "{{ proxmox_api_token_secret }}"
-        validate_certs: false
-        node: pve
-        vmid: "{{ actual_vmid }}"
-        hostname: "{{ nfs_hostname }}"
-        ostemplate: "{{ nfs_template_storage | trim }}:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst"
-        cores: 1 
-        memory: 512 
-        disk: "{{ nfs_disk_storage | trim }}:8" 
-        unprivileged: false 
-        pubkey: "{{ lookup('file', '~/.ssh/id_ansible.pub') }}"
-        cmode: console
-        netif:
-          net0: "name=eth0,bridge=vmbr0,ip={{ nfs_ip | trim }},gw={{ nfs_gw | trim }}" 
-        state: present
+    - name: Verifica se il container NFS LXC esiste gia'
+      ansible.builtin.command: "pct status {{ actual_vmid }}"
+      register: lxc_exists
+      failed_when: false
+      changed_when: false
+
+    - name: Trasferisci la chiave SSH pubblica sul server Proxmox per NFS
+      ansible.builtin.copy:
+        src: "~/.ssh/id_ansible.pub"
+        dest: "/tmp/id_ansible_nfs.pub"
+        mode: '0644'
+      when: lxc_exists.rc != 0
+
+    - name: Rilascia il container LXC Privilegiato tramite CLI pct (Workaround API Timeout)
+      ansible.builtin.command: >
+        pct create {{ actual_vmid }} {{ nfs_template_storage | trim }}:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst
+        --hostname {{ nfs_hostname }}
+        --cores 1
+        --memory 512
+        --rootfs {{ nfs_disk_storage | trim }}:8
+        --unprivileged 0
+        --ssh-public-keys /tmp/id_ansible_nfs.pub
+        --cmode console
+        --net0 name=eth0,bridge=vmbr0,ip={{ nfs_ip | trim }},gw={{ nfs_gw | trim }}
+      when: lxc_exists.rc != 0
 
     - name: Workaround Sicurezza Proxmox - Imposta feature nesting via CLI
       ansible.builtin.command: "pct set {{ actual_vmid }} --features nesting=1"

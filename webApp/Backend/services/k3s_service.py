@@ -37,26 +37,15 @@ class K3sService:
         dao.save_k3s_config(vars_data, secrets_data)
 
     @staticmethod
-    def execute_k3s_setup_stream(pve_ip):
+    def execute_k3s_setup_stream(inventory_path):
         dao = K3sDAO()
         scripts_path = os.path.join(dao.k3s_dir)
-        vars_path = os.path.join(dao.arch_dir, "vars.yml")
         
-        if not pve_ip:
-            try:
-                if os.path.exists(vars_path):
-                    with open(vars_path, 'r') as f:
-                        k3s_vars = yaml.safe_load(f) or {}
-                        pve_ip = k3s_vars.get('proxmox_api_host')
-            except Exception:
-                pass
-
-        inventory_path = InventoryService.generate_inventory(pve_ip)
+        # Eliminata tutta la logica sporca di lettura file e chiamata ad altri Service
         if not inventory_path:
-            yield json.dumps({"success": False, "log": "\n❌ Errore: Impossibile generare l'inventory globale.\n"}) + "\n"
+            yield json.dumps({"success": False, "log": "\n❌ Errore: inventory path mancante.\n"}) + "\n"
             return
             
-        # Rimosso il playbook 5 (Nextcloud), K3s si ferma al Provisioner Storage!
         playbooks = [
             "1_create_cloudinit_template.yml", 
             "2_deploy_k3s_vms.yml",

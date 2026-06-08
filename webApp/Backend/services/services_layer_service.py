@@ -1,9 +1,7 @@
 import os
 import subprocess
-import yaml
 import json
 from daos.k3s_dao import K3sDAO
-from services.inventory_service import InventoryService
 
 class ServicesLayerService:
     
@@ -24,29 +22,20 @@ class ServicesLayerService:
         dao.save_k3s_config(vars_data, secrets_data)
 
     @staticmethod
-    def execute_nextcloud_stream():
-        """Aggiorna l'inventory globale ed esegue in streaming il playbook di Nextcloud dal path aggiornato"""
+    def execute_nextcloud_stream(inventory_path):
+        """Esegue in streaming il playbook di Nextcloud e calcola l'URL finale"""
         dao = K3sDAO()
-        
-        # --- PATH AGGIORNATI IN BASE ALLA TUA NUOVA STRUTTURA ---
-        # dao.arch_dir punta a "architecture"
-        # Andiamo a prendere il file "deploy_nextcloud.yml" dentro la cartella "services"
         playbook_path = os.path.join(dao.arch_dir, "services", "deploy_nextcloud.yml")
-        vars_path = os.path.join(dao.arch_dir, "vars.yml")
         
-        pve_ip = None
-        try:
-            if os.path.exists(vars_path):
-                with open(vars_path, 'r') as f:
-                    vars_yaml = yaml.safe_load(f) or {}
-                    pve_ip = vars_yaml.get('proxmox_api_host')
-        except Exception:
-            pass
-
-        inventory_path = InventoryService.generate_inventory(pve_ip)
         if not inventory_path:
-            yield json.dumps({"success": False, "log": "\n❌ Errore: Impossibile rigenerare l'inventory globale.\n"}) + "\n"
+            yield json.dumps({"success": False, "log": "\n❌ Errore: inventory path mancante.\n"}) + "\n"
             return
+
+        # Recuperiamo l'IP dell'agent per calcolare l'URL di Nextcloud
+        vars_data, _ = dao.get_k3s_config()
+        agent_ip_raw = vars_data.get('k3s_agent_ip', '127.0.0.1/24')
+        agent_ip = agent_ip_raw.split('/')[0]
+        nextcloud_url = f"http://{agent_ip}:30080"
 
         env = os.environ.copy()
         env["ANSIBLE_HOST_KEY_CHECKING"] = "False"
@@ -64,6 +53,11 @@ class ServicesLayerService:
         process.wait()
         
         if process.returncode == 0:
-            yield json.dumps({"success": True, "log": "\n✅ Nextcloud distribuito con successo nel cluster!\n"}) + "\n"
+            # Inviamo l'URL all'interno della risposta di successo
+            yield json.dumps({
+                "success": True, 
+                "url": nextcloud_url, 
+                "log": f"\n✅ Nextcloud distribuito con successo nel cluster!\n🚀 Servizio raggiungibile su: {nextcloud_url}\n"
+            }) + "\n"
         else:
             yield json.dumps({"success": False, "log": f"\n❌ Errore nel Deployment applicativo. Codice errore: {process.returncode}\n"}) + "\n"

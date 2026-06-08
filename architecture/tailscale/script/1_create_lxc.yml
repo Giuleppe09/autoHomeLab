@@ -7,28 +7,6 @@
     - "../../secrets.yml"
 
   tasks:
-    # --- FASE 1: AUTO-DISCOVERY STORAGE ---
-    - name: Interroga Proxmox per individuare gli storage abilitati ai Template (vztmpl)
-      ansible.builtin.shell: "pvesm status -content vztmpl | awk 'NR>1 {print $1}'"
-      register: available_template_storage
-      changed_when: false
-
-    - name: Valida l'esistenza dello storage per i Template
-      delegate_to: localhost
-      ansible.builtin.fail:
-        msg: "❌ ERRORE: Lo storage '{{ lxc_template_storage | trim }}' non esiste o non supporta i template sul tuo nodo."
-      when: lxc_template_storage | trim not in available_template_storage.stdout.split('\n')
-
-    - name: Interroga Proxmox per individuare gli storage abilitati ai Dischi LXC (rootdir)
-      ansible.builtin.shell: "pvesm status -content rootdir | awk 'NR>1 {print $1}'"
-      register: available_disk_storage
-      changed_when: false
-
-    - name: Valida l'esistenza dello storage per i Dischi LXC
-      delegate_to: localhost
-      ansible.builtin.fail:
-        msg: "❌ ERRORE: Lo storage '{{ lxc_disk_storage | trim }}' non esiste o non supporta i container sul tuo nodo."
-      when: lxc_disk_storage | trim not in available_disk_storage.stdout.split('\n')
 
     # --- FASE 2: DOWNLOAD TEMPLATE E CREAZIONE CONTAINER ---
     - name: Verifica se il template Ubuntu e' gia' presente nello storage scelto
@@ -41,27 +19,31 @@
       ansible.builtin.command: "pveam download {{ lxc_template_storage | trim }} ubuntu-24.04-standard_24.04-2_amd64.tar.zst"
       when: template_check.rc != 0
 
-    - name: Rilascia il container LXC tramite API Proxmox
-      delegate_to: localhost
-      community.proxmox.proxmox:
-        api_host: "{{ proxmox_api_host }}"
-        api_user: "{{ proxmox_api_user }}"
-        api_token_id: "{{ proxmox_api_token_id }}"
-        api_token_secret: "{{ proxmox_api_token_secret }}"
-        validate_certs: false
-        node: pve
-        vmid: "{{ lxc_vmid }}"
-        hostname: "{{ lxc_hostname }}"
-        ostemplate: "{{ lxc_template_storage | trim }}:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst"
-        cores: 1
-        memory: 512
-        disk: "{{ lxc_disk_storage | trim }}:8" 
-        unprivileged: true
-        pubkey: "{{ lookup('file', '~/.ssh/id_ansible.pub') }}"
-        cmode: console
-        netif:
-          net0: "name=eth0,bridge=vmbr0,ip={{ lxc_ip | trim }},gw={{ lxc_gw | trim }}"
-        state: present
+    - name: Verifica se il container LXC esiste gia'
+      ansible.builtin.command: "pct status {{ lxc_vmid }}"
+      register: lxc_exists
+      failed_when: false
+      changed_when: false
+
+    - name: Trasferisci la chiave SSH pubblica sul server Proxmox per l'LXC
+      ansible.builtin.copy:
+        src: "~/.ssh/id_ansible.pub"
+        dest: "/tmp/id_ansible_lxc.pub"
+        mode: '0644'
+      when: lxc_exists.rc != 0
+
+    - name: Rilascia il container LXC tramite CLI pct (Workaround API 8006 Timeout)
+      ansible.builtin.command: >
+        pct create {{ lxc_vmid }} {{ lxc_template_storage | trim }}:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst
+        --hostname {{ lxc_hostname }}
+        --cores 1
+        --memory 512
+        --rootfs {{ lxc_disk_storage | trim }}:8
+        --unprivileged 1
+        --ssh-public-keys /tmp/id_ansible_lxc.pub
+        --cmode console
+        --net0 name=eth0,bridge=vmbr0,ip={{ lxc_ip | trim }},gw={{ lxc_gw | trim }}
+      when: lxc_exists.rc != 0
 
     # --- FASE 3: TUN DEVICE E HEALTH CHECK ---
     - name: Abilita il device TUN nel file di configurazione dell'LXC

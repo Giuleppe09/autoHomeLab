@@ -1,70 +1,22 @@
-// Esegui un controllo dello stato appena la pagina si è caricata
-document.addEventListener('DOMContentLoaded', checkStatus);
-
-async function checkStatus() {
-    // Creazione dinamica del container wrapper in alto a destra
-    let wrapper = document.getElementById('pve-status-wrapper');
-    if (!wrapper) {
-        wrapper = document.createElement('div');
-        wrapper.id = 'pve-status-wrapper';
-        wrapper.style.cssText = "position: absolute; top: 20px; right: 20px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; z-index: 1000;";
-        document.body.appendChild(wrapper);
-
-        let initialStatusContainer = document.createElement('div');
-        initialStatusContainer.id = 'pve-status-dot';
-        initialStatusContainer.style.cssText = "display: flex; align-items: center; gap: 8px; font-weight: bold; font-size: 14px; background: #1f2335; padding: 8px 12px; border-radius: 20px; border: 1px solid #414868; color: #a9b1d6; cursor: pointer; transition: opacity 0.2s;";
-        initialStatusContainer.title = "Clicca per aggiornare lo stato";
-        initialStatusContainer.onclick = checkStatus;
-        initialStatusContainer.onmouseover = () => initialStatusContainer.style.opacity = "0.8";
-        initialStatusContainer.onmouseout = () => initialStatusContainer.style.opacity = "1";
-        wrapper.appendChild(initialStatusContainer);
-    }
-    
-    let statusContainer = document.getElementById('pve-status-dot');
-
-    // Animazione di caricamento (giallo/arancione)
-    statusContainer.innerHTML = '<span style="display:inline-block; width:14px; height:14px; border-radius:50%; background-color: #e0af68; box-shadow: 0 0 8px #e0af68;"></span> Verifica Proxmox...';
-    statusContainer.style.pointerEvents = "none";
-    statusContainer.style.opacity = "0.5";
-    
-    try {
-        const response = await fetch('/api/check_status');
-        if (response.ok) {
-            const data = await response.json();
-            if (data.status === "online") {
-                statusContainer.innerHTML = '<span style="display:inline-block; width:14px; height:14px; border-radius:50%; background-color: #9ece6a; box-shadow: 0 0 8px #9ece6a;"></span> Proxmox Online';
-            } else {
-                statusContainer.innerHTML = '<span style="display:inline-block; width:14px; height:14px; border-radius:50%; background-color: #f7768e; box-shadow: 0 0 8px #f7768e;"></span> Proxmox Offline';
-            }
-        } else {
-            statusContainer.innerHTML = '<span style="display:inline-block; width:14px; height:14px; border-radius:50%; background-color: #f7768e; box-shadow: 0 0 8px #f7768e;"></span> Errore di stato';
-        }
-    } catch (error) {
-        console.error("Errore durante il fetch dello stato:", error);
-        statusContainer.innerHTML = '<span style="display:inline-block; width:14px; height:14px; border-radius:50%; background-color: #f7768e; box-shadow: 0 0 8px #f7768e;"></span> Rete non raggiungibile';
-    } finally {
-        statusContainer.style.pointerEvents = "auto";
-        statusContainer.style.opacity = "1";
-    }
-}
-
 async function runTailscaleSetup() {
     const consoleOutput = document.getElementById('console-output');
-    const setupBtn = document.getElementById('setup-btn');
+    const btnRun = document.getElementById('btn-run');
+    const btnNext = document.getElementById('btn-next');
     
-    // Mostra la console e disabilita il bottone per evitare doppi click
+    // Mostra la console e resetta lo stato visivo
     consoleOutput.classList.remove('hidden');
-    consoleOutput.innerText = "Avvio del processo Ansible in corso. Attendere prego...\n";
-    setupBtn.disabled = true;
+    btnRun.disabled = true;
+    btnRun.innerText = "⏳ Installazione in corso...";
+    consoleOutput.innerText = "Avvio processi Ansible...\n\n";
 
     try {
-        // Lancia l'endpoint per l'esecuzione dei playbook
         const response = await fetch('/api/tailscale/setup', { method: 'POST' });
 
         if (!response.ok) {
             throw new Error(await response.text());
         }
         
+        // Logica di Stream (Identica a NFS)
         const reader = response.body.getReader();
         const decoder = new TextDecoder('utf-8');
         let buffer = "";
@@ -75,9 +27,7 @@ async function runTailscaleSetup() {
             
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split('\n');
-            
-            // L'ultimo frammento è una riga incompleta (non ancora terminata con \n)
-            buffer = lines.pop();
+            buffer = lines.pop(); // Conserva l'ultima riga se incompleta
             
             for (const line of lines) {
                 if (!line.trim()) continue;
@@ -86,19 +36,21 @@ async function runTailscaleSetup() {
                     const parsed = JSON.parse(line);
                     
                     if (parsed.log) {
+                        // Aggiunge un po' di spazio per leggibilità tra un play e l'altro
                         if (parsed.log.includes("PLAY [")) {
-                            consoleOutput.innerText = "";
+                            consoleOutput.innerText += "\n"; 
                         }
                         consoleOutput.innerText += parsed.log;
-                        consoleOutput.scrollTop = consoleOutput.scrollHeight; // Autoscroll
+                        consoleOutput.scrollTop = consoleOutput.scrollHeight; // Autoscroll verso il basso
                     }
 
-                    // Apparizione condizionata dal flag booleano restituito dal back-end
+                    // Attivazione del bottone Prosegui al successo
                     if (parsed.success === true) {
-                        setupBtn.innerHTML = 'Passa al prossimo step (NFS) &rarr;';
-                        setupBtn.style.backgroundColor = '#9ece6a';
-                        setupBtn.style.color = '#1a1b26';
-                        setupBtn.onclick = () => window.location.href = '/nfs';
+                        btnRun.innerText = "Completato ✔️";
+                        btnRun.classList.replace('btn-primary', 'btn-secondary');
+                        
+                        btnNext.classList.remove('hidden');
+                        btnNext.disabled = false;
                     }
                 } catch (e) {
                     console.error("Errore nel parsing del log (JSON):", e, line);
@@ -108,7 +60,7 @@ async function runTailscaleSetup() {
     } catch (error) {
         console.error("Errore di rete:", error);
         consoleOutput.innerText += "\n❌ Errore di connessione: il server non risponde o ha chiuso la connessione inaspettatamente.";
-    } finally {
-        setupBtn.disabled = false;
+        btnRun.innerText = "Riprova Avvio";
+        btnRun.disabled = false;
     }
 }

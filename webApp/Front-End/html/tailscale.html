@@ -3,29 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HomeLab Manager - Setup Tailscale</title>
+    <title>Setup Tailscale - HomeLab Manager</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>🏠 HomeLab Manager</h1>
-            <p>Automazione e Gestione Infrastruttura</p>
+            <h1>🚀 Setup Tailscale VPN</h1>
+            <p>Esecuzione dell'automazione Ansible per il Gateway</p>
         </header>
 
-        <!-- Step 2: Tailscale Execution -->
-        <section id="tailscale-section" class="card">
-            <div class="step-badge">Step 1</div>
-            <h2>Configurazione Tailscale VPN</h2>
-            <p>Il primo passo è creare un Gateway VPN su Proxmox per accedere alla tua LAN ovunque.</p>
+        <section id="tailscale-section" class="card" style="text-align: center;">
+            <h2>Deploy Gateway VPN</h2>
+            <p>Avvia il Playbook Ansible per creare il Gateway VPN su Proxmox.</p>
 
-            <div class="actions">
-                <button onclick="runTailscaleSetup()" id="setup-btn" class="btn-primary">Avvia Setup Ansible</button>
+            <div style="margin-top: 20px;">
+                <button id="btn-run" class="btn-primary" onclick="runTailscaleSetup()">Avvia Setup Ansible</button>
+                <button id="btn-next" class="btn-secondary hidden" onclick="window.location.href='/nfs'" disabled style="margin-left: 10px;">Prosegui a NFS ➡️</button>
             </div>
 
-            <div id="console-output" class="console hidden"></div>
+            <div id="console-output" class="hidden" style="background-color: #000; color: #0f0; font-family: 'Courier New', Courier, monospace; padding: 15px; height: 400px; overflow-y: auto; white-space: pre-wrap; text-align: left; border-radius: 8px; margin-top: 20px; border: 1px solid #333; box-shadow: inset 0 0 10px rgba(0,255,0,0.1);">In attesa di avviare l'installazione...</div>
         </section>
     </div>
+
     <script src="{{ url_for('static', filename='js/tailscale.js') }}"></script>
 </body>
 </html>

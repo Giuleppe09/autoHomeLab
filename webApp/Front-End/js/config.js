@@ -42,9 +42,9 @@ function populateSelect(selectElement, optionsArray, defaultPreferred) {
     if (optionsArray && optionsArray.length > 0) {
         optionsArray.forEach(opt => {
             const option = document.createElement('option');
-            option.value = opt;
-            option.text = opt;
-            if (opt === defaultPreferred) option.selected = true;
+            option.value = opt.name;
+            option.text = `${opt.name} (${opt.free_gb} GB liberi su ${opt.total_gb} GB)`;
+            if (opt.name === defaultPreferred) option.selected = true;
             selectElement.appendChild(option);
         });
     } else {

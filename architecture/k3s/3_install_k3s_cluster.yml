@@ -8,6 +8,10 @@
         name: nfs-common
         state: present
         update_cache: yes
+      register: apt_status
+      until: apt_status is success
+      retries: 15
+      delay: 10
 
     - name: Scarica ed installa K3s in modalita' Server
       ansible.builtin.shell: curl -sfL https://get.k3s.io | sh -
@@ -34,6 +38,10 @@
         name: nfs-common
         state: present
         update_cache: yes
+      register: apt_status
+      until: apt_status is success
+      retries: 15
+      delay: 10
 
     - name: Scarica ed installa K3s in modalita' Agent (senza avviarlo)
       ansible.builtin.shell: >

@@ -13,9 +13,19 @@ const serviceRegistry = {
             <input type="password" id="nextcloud_password" name="nextcloud_password" class="form-control" placeholder="Inserisci una password sicura" required>
         </div>
         <div class="form-group">
-            <label for="nextcloud_storage_size">Quota Storage per Dati Utente (GB)</label>
-            <input type="number" id="nextcloud_storage_size" name="nextcloud_storage_size" class="form-control" value="50" min="5" required>
+            <label for="nextcloud_disk_storage">Storage di Destinazione per i Dati</label>
+            <select id="nextcloud_disk_storage" name="nextcloud_disk_storage" class="form-control default-select" required>
+                <option value="">Caricamento storage in corso...</option>
+            </select>
             <small id="storage-info-helper" style="color: #a9b1d6; display:block; margin-top: 5px;">⏳ Interrogazione capacità Proxmox in corso...</small>
+        </div>
+        <div class="form-group" id="nextcloud_storage_size_container" style="display: none;">
+            <label for="nextcloud_storage_size">Quota Storage per Dati Utente: <span id="storage-val" style="font-weight: bold; color: #7aa2f7;">50</span> GB</label>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span id="range-min" style="font-size: 0.8rem; color: #a9b1d6;">5GB</span>
+                <input type="range" id="nextcloud_storage_size" name="nextcloud_storage_size" class="form-control-range" value="50" min="5" max="100" step="1" required style="flex-grow: 1;">
+                <span id="range-max" style="font-size: 0.8rem; color: #a9b1d6;">100GB</span>
+            </div>
         </div>
     `
 };
@@ -44,28 +54,62 @@ async function selectService(serviceName) {
 
 async function updateStorageHelperInfo() {
     const helper = document.getElementById('storage-info-helper');
+    const storageSelect = document.getElementById('nextcloud_disk_storage');
     const storageInput = document.getElementById('nextcloud_storage_size');
+    const storageVal = document.getElementById('storage-val');
+    const rangeMax = document.getElementById('range-max');
+    const sliderContainer = document.getElementById('nextcloud_storage_size_container');
     
     try {
         const response = await fetch('/api/storages');
         const data = await response.json();
         
-        if (response.ok && data.storages && data.storages.length > 0) {
-            // Cerchiamo lo storage condiviso o quello usato di solito per i dischi (es: local-lvm o Storage-1TB)
-            // Se hai un filtro specifico puoi applicarlo, altrimenti mostriamo lo spazio del primo disponibile
-            const mainStorage = data.storages.find(s => s.name === 'Storage-1TB') || data.storages[0];
+        if (response.ok && data.disk_storages && data.disk_storages.length > 0) {
+            proxmoxStorages = data.disk_storages;
             
-            if (mainStorage) {
-                helper.innerHTML = `ℹ️ Spazio su Proxmox [<b>${mainStorage.name}</b>]: ${mainStorage.free_gb} GB liberi di ${mainStorage.total_gb} GB totali.`;
-                // Vincoliamo l'input del form per non superare lo spazio fisico disponibile
-                storageInput.max = Math.floor(mainStorage.free_gb);
-                storageInput.placeholder = `Max ${Math.floor(mainStorage.free_gb)} GB`;
-            }
+            // Popoliamo la select degli storage dinamicamente
+            storageSelect.innerHTML = '';
+            proxmoxStorages.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.name;
+                opt.text = `${s.name} (${s.free_gb} GB liberi su ${s.total_gb} GB)`;
+                if (s.name === 'Storage-1TB' || s.name === 'local-lvm') opt.selected = true;
+                storageSelect.appendChild(opt);
+            });
+            
+            // Mostra lo slider ora che i dati reali sono disponibili
+            if (sliderContainer) sliderContainer.style.display = 'block';
+            
+            // Funzione per aggiornare dinamicamente il limite della manopola (range)
+            const updateSlider = () => {
+                const selectedStorage = proxmoxStorages.find(s => s.name === storageSelect.value) || proxmoxStorages[0];
+                if (selectedStorage) {
+                    const maxFree = Math.floor(selectedStorage.free_gb);
+                    storageInput.max = maxFree > 5 ? maxFree : 5;
+                    rangeMax.innerText = storageInput.max + "GB";
+                    
+                    if (parseInt(storageInput.value) > storageInput.max) {
+                        storageInput.value = storageInput.max;
+                    }
+                    storageVal.innerText = storageInput.value;
+                    helper.innerHTML = `ℹ️ Spazio su [<b>${selectedStorage.name}</b>]: ${selectedStorage.free_gb} GB liberi su ${selectedStorage.total_gb} GB totali.`;
+                }
+            };
+            
+            storageSelect.addEventListener('change', updateSlider);
+            storageInput.addEventListener('input', () => {
+                storageVal.innerText = storageInput.value;
+            });
+            
+            // Trigger iniziale per impostare la manopola sul primo storage
+            updateSlider();
         } else {
             helper.innerText = "⚠️ Impossibile leggere i dettagli dello storage. Inserimento libero attivo.";
+            if (storageSelect) storageSelect.innerHTML = '<option value="">Nessun storage compatibile trovato</option>';
         }
     } catch (e) {
         helper.innerText = "❌ Errore di connessione con l'API Storage di Proxmox.";
+        if (storageSelect) storageSelect.innerHTML = '<option value="">Errore di rete</option>';
     }
 }
 
@@ -85,8 +129,10 @@ async function saveServiceConfig() {
     }
 
     const btnSave = document.getElementById('btn-save');
-    btnSave.disabled = true;
-    btnSave.innerText = "Salvataggio parametri...";
+    if (btnSave) {
+        btnSave.disabled = true;
+        btnSave.innerText = "⏳ Salvataggio parametri...";
+    }
 
     try {
         const configResponse = await fetch(`/api/services/${currentService}/config`, {
@@ -96,18 +142,30 @@ async function saveServiceConfig() {
         });
 
         if (!configResponse.ok) {
-            const err = await configResponse.json();
-            throw new Error(err.message || "Errore durante il salvataggio dei parametri");
+            let errorMsg = "Errore durante il salvataggio dei parametri.";
+            try {
+                const err = await configResponse.json();
+                errorMsg = err.message || err.error || errorMsg;
+            } catch (e) {
+                errorMsg = `Errore HTTP ${configResponse.status} dal server. L'endpoint backend non è configurato correttamente.`;
+            }
+            throw new Error(errorMsg);
         }
 
-        document.getElementById('form-section').classList.add('hidden');
-        document.getElementById('setup-title').innerText = `🚀 Deploy ${currentService.toUpperCase()}`;
-        document.getElementById('setup-section').classList.remove('hidden');
+        const formSection = document.getElementById('form-section');
+        const setupTitle = document.getElementById('setup-title');
+        const setupSection = document.getElementById('setup-section');
+        
+        if (formSection) formSection.classList.add('hidden');
+        if (setupTitle) setupTitle.innerText = `🚀 Deploy ${currentService.toUpperCase()}`;
+        if (setupSection) setupSection.classList.remove('hidden');
 
     } catch (error) {
-        alert("Errore: " + error.message);
-        btnSave.disabled = false;
-        btnSave.innerText = "Salva Configurazione";
+        alert("❌ Errore: " + error.message);
+        if (btnSave) {
+            btnSave.disabled = false;
+            btnSave.innerText = "Salva Configurazione";
+        }
     }
 }
 
@@ -146,9 +204,24 @@ async function runServiceSetup() {
                 try {
                     const parsed = JSON.parse(line);
                     
-                    if (parsed.success === false && parsed.message) {
-                         consoleOutput.innerText += "\n❌ Errore critico backend: " + parsed.message;
-                         throw new Error("Interruzione");
+                    if (parsed.success === true) {
+                        const btnHome = document.getElementById('btn-home');
+                        btnHome.classList.remove('hidden');
+                        btnHome.disabled = false;
+                        
+                        btnRun.classList.replace('btn-primary', 'btn-secondary');
+                        btnRun.innerText = "Completato ✔️";
+
+                        // Se il backend ha restituito un URL (es. Nextcloud) lo mostriamo a schermo
+                        if (parsed.url) {
+                            const urlContainer = document.getElementById('success-url-container');
+                            const linkElement = document.getElementById('nextcloud-link');
+                            if (urlContainer && linkElement) {
+                                linkElement.href = parsed.url;
+                                linkElement.innerText = parsed.url;
+                                urlContainer.classList.remove('hidden');
+                            }
+                        }
                     }
 
                     if (parsed.log) {
@@ -161,6 +234,7 @@ async function runServiceSetup() {
                         const btnHome = document.getElementById('btn-home');
                         btnHome.classList.remove('hidden');
                         btnHome.disabled = false;
+                        btnHome.onclick = () => window.location.href = '/dashboard';
                         
                         btnRun.classList.replace('btn-primary', 'btn-secondary');
                         btnRun.innerText = "Completato ✔️";

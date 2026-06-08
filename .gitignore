@@ -1,16 +1,15 @@
-# Ambienti virtuali Python
-venv/
-env/
+# File di Configurazione Generati (Dati Sensibili Personali)
+vars.yml
+secrets.yml
 
-# Cache e file compilati (visibili nel tuo screenshot)
+# File di Inventario Ansible (Generati dinamicamente o obsoleti)
+*.ini
+
+# Output temporanei (Discovery Proxmox)
+proxmox_storages.json
+proxmox_info.json
+
+# Ambiente Python e Cache
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-.Python
-
-# Configurazioni dell'editor locale
-.vscode/
-
-# Cartelle specifiche del progetto da ignorare
-collections/
+webApp/Backend/venv/

@@ -2,6 +2,8 @@ import os
 from flask import Response, stream_with_context, jsonify, render_template
 from services.nfs_service import NfsService
 from services.proxmox_service import ProxmoxService
+from services.config_service import ConfigService
+from services.inventory_service import InventoryService
 
 base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -25,10 +27,16 @@ class NfsController:
     @staticmethod
     def handle_setup_request():
         print("Ricevuta richiesta POST per setup NFS - Delega al Service")
+        
+        # Orchestrazione
+        config_service = ConfigService(base_dir)
+        pve_ip = config_service.get_proxmox_ip()
+        inventory_path = InventoryService.generate_inventory(pve_ip)
+
         nfs_service = NfsService()
         
         return Response(
-            stream_with_context(nfs_service.execute_setup_stream()),
+            stream_with_context(nfs_service.execute_setup_stream(inventory_path)),
             mimetype='application/json'
         )
     

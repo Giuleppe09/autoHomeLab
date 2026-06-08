@@ -1,6 +1,11 @@
 import os
-from flask import jsonify, Response, request, send_from_directory
+from flask import jsonify, Response, request, send_from_directory, stream_with_context
 from services.k3s_service import K3sService
+from services.config_service import ConfigService
+from services.inventory_service import InventoryService
+
+# Questo è fondamentale, se manca, ConfigService(base_dir) va in errore!
+base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 class K3sController:
     
@@ -34,12 +39,16 @@ class K3sController:
     @staticmethod
     def run_setup():
         try:
-            # Aggiunto silent=True! Se il front-end non manda nulla, usa un dizionario vuoto.
-            data = request.get_json(silent=True) or {}
-            pve_ip = data.get('pve_ip', None)
+            # L'Orchestratore recupera l'IP e genera l'inventory
+            config_service = ConfigService(base_dir)
+            pve_ip = config_service.get_proxmox_ip()
             
+            inventory_path = InventoryService.generate_inventory(pve_ip)
+            
+            # Passa lo stream pronto
+            print("partito")
             return Response(
-                K3sService.execute_k3s_setup_stream(pve_ip), 
+                stream_with_context(K3sService.execute_k3s_setup_stream(inventory_path)), 
                 mimetype='application/json',
                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
             )

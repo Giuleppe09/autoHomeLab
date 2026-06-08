@@ -10,7 +10,7 @@ class InventoryService:
 
         ips = {
             'lxc_ip': None,
-            'nfs_lxc_ip': None,
+            'nfs_ip': None,
             'k3s_server_ip': None,
             'k3s_agent_ip': None,
             'k3s_user': 'kubeuser' # Valore di default
@@ -41,9 +41,9 @@ class InventoryService:
             inventory_content.append(f"tailscale_lxc ansible_host={ips['lxc_ip']} ansible_user=root ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10'\n")
 
         # 3. NFS LXC
-        if ips.get('nfs_lxc_ip'):
+        if ips.get('nfs_ip'):
             inventory_content.append("[nfs_lxc]")
-            inventory_content.append(f"nfs_server ansible_host={ips['nfs_lxc_ip']} ansible_user=root ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10'\n")
+            inventory_content.append(f"nfs_server ansible_host={ips['nfs_ip']} ansible_user=root ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10'\n")
 
         # 4. K3s Server (Control Plane)
         if ips.get('k3s_server_ip'):
