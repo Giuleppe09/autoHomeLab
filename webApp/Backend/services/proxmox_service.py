@@ -90,10 +90,16 @@ class ProxmoxService:
             for s in raw_storages:
                 if s.get('active') == 1:
                     total_bytes = s.get('total', s.get('size', 0))
-                    free_bytes = s.get('avail', 0)
                     
-                    total_gb = round(total_bytes / (1024 ** 3), 1)
-                    free_gb = round(free_bytes / (1024 ** 3), 1)
+                    # Calcolo Proxmox GUI (Base 10, ignora 5% system reserve per la root)
+                    used_bytes = s.get('used', 0)
+                    if used_bytes > 0:
+                        free_bytes = total_bytes - used_bytes
+                    else:
+                        free_bytes = s.get('avail', 0)
+                    
+                    total_gb = round(total_bytes / (1000 ** 3), 1)
+                    free_gb = round(free_bytes / (1000 ** 3), 1)
                     
                     storage_info = {
                         "name": s['storage'],

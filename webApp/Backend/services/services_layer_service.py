@@ -28,24 +28,83 @@ class ServicesLayerService:
         dao.save_k3s_config(vars_data, secrets_data)
 
     @staticmethod
+    def get_storage_accounting():
+        """
+        Calcola lo spazio fisico reale e lo spazio sicuro allocabile
+        (sottraendo le PVC già promesse a Kubernetes).
+        """
+        from services.proxmox_service import ProxmoxService
+        
+        dao = K3sDAO()
+        vars_data, _ = dao.get_k3s_config()
+        
+        # Il datastore NFS risiede solitamente su host_mount_path
+        pool_name = vars_data.get('host_mount_path', 'local-lvm')
+        
+        proxmox_service = ProxmoxService()
+        storage_info = proxmox_service.get_detailed_storages()
+        
+        physical_free = 0.0
+        if storage_info.get('success'):
+            for storage in storage_info.get('disk_storages', []):
+                if storage['name'] == pool_name:
+                    physical_free = storage.get('free_gb', 0.0)
+                    break
+                    
+        # Calcolo overprovisioning: somma di tutti i volumi assegnati (in GB)
+        allocated_gb = 0
+        volumes = vars_data.get('nextcloud_storage_volumes', [])
+        if isinstance(volumes, str):
+            volumes = [volumes]
+            
+        for vol in volumes:
+            if isinstance(vol, str) and vol.endswith('Gi'):
+                try:
+                    allocated_gb += int(vol.replace('Gi', '').strip())
+                except ValueError:
+                    pass
+                    
+        # Safe free: spazio fisico realmente disponibile - spazio già "promesso" alle PVC
+        safe_free = round(physical_free - allocated_gb, 1)
+        if safe_free < 0:
+            safe_free = 0.0
+            
+        return {
+            "pool_name": pool_name,
+            "physical_free": physical_free,
+            "allocated_gb": allocated_gb,
+            "safe_free": safe_free
+        }
+
+    @staticmethod
     def add_nextcloud_storage_volume(new_size):
-        """Recupera la configurazione attuale e aggiunge una nuova voce alla lista"""
+        """Recupera la configurazione, verifica l'overprovisioning e aggiunge il volume."""
         dao = K3sDAO()
         existing_vars, _ = dao.get_k3s_config()
         
-        # Estrae la lista esistente o ne crea una nuova se assente
+        # 1. Pulisce l'input (accetta sia "20" che "20Gi")
+        new_size_val = int(str(new_size).replace('Gi', '').strip())
+        
+        # 2. Controllo di sicurezza VERO (Gabbia dell'Overprovisioning)
+        accounting = ServicesLayerService.get_storage_accounting()
+        safe_free = accounting.get('safe_free', 0.0)
+        pool_name = accounting.get('pool_name', 'Sconosciuto')
+        
+        if new_size_val > safe_free:
+            raise ValueError(f"Overprovisioning evitato: richiesti +{new_size_val}GB, ma lo spazio SICURO assegnabile su '{pool_name}' è di soli {safe_free}GB (sottraendo le PVC di Nextcloud già esistenti).")
+        
+        # 3. Estrae la lista esistente o ne crea una nuova se assente
         volumes = existing_vars.get('nextcloud_storage_volumes', [])
         if isinstance(volumes, str):
             volumes = [volumes]
             
-        if not new_size.endswith('Gi'):
-            new_size += 'Gi'
-            
-        volumes.append(new_size)
+        new_size_str = f"{new_size_val}Gi"
+        volumes.append(new_size_str)
         existing_vars['nextcloud_storage_volumes'] = volumes
         
         # Persiste l'array aggiornato in vars.yml
         dao.save_k3s_config(existing_vars, {})
+        return True
 
         
     @staticmethod
