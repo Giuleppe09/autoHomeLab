@@ -1,6 +1,7 @@
 import os
 import subprocess
 import json
+import time
 from daos.k3s_dao import K3sDAO
 
 class ServicesLayerService:
@@ -98,32 +99,6 @@ class ServicesLayerService:
         }
 
     @staticmethod
-    def add_nextcloud_storage_volume(new_size):
-        """Recupera la configurazione, verifica l'overprovisioning e aggiunge il volume."""
-        dao = K3sDAO()
-        existing_vars, _ = dao.get_k3s_config()
-        
-        new_size_val = int(str(new_size).replace('Gi', '').strip())
-        
-        accounting = ServicesLayerService.get_storage_accounting()
-        safe_free = accounting.get('safe_free', 0.0)
-        pool_name = accounting.get('pool_name', 'Sconosciuto')
-        
-        if new_size_val > safe_free:
-            raise ValueError(f"Overprovisioning evitato: richiesti +{new_size_val}GB, ma lo spazio SICURO assegnabile su '{pool_name}' è di soli {safe_free}GB.")
-        
-        volumes = existing_vars.get('nextcloud_storage_volumes', [])
-        if isinstance(volumes, str):
-            volumes = [volumes]
-            
-        new_size_str = f"{new_size_val}Gi"
-        volumes.append(new_size_str)
-        existing_vars['nextcloud_storage_volumes'] = volumes
-        
-        dao.save_k3s_config(existing_vars, {})
-        return True
-
-    @staticmethod
     def execute_nextcloud_stream(inventory_path):
         """Esegue in streaming il playbook di Nextcloud e calcola l'URL finale"""
         dao = K3sDAO()
@@ -161,3 +136,97 @@ class ServicesLayerService:
             }) + "\n"
         else:
             yield json.dumps({"success": False, "log": f"\n❌ Errore nel Deployment applicativo. Codice errore: {process.returncode}\n"}) + "\n"
+    
+    @staticmethod
+    def expand_service_storage(service_name, additional_gb):
+        """
+        [MOCK RAPIDO] Aggiunge i GB al vars.yml reale e chiude subito la richiesta.
+        """
+        # ==========================================
+        # 🔧 MODALITÀ TEST OFFLINE (MOCK MODE)
+        MOCK_MODE = True
+        # ==========================================
+
+        dao = K3sDAO()
+
+        if MOCK_MODE:
+            yield json.dumps({"log": f"\n🔧 [MOCK] Elaborazione richiesta per {additional_gb}GB su '{service_name}'...\n"}) + "\n"
+            
+            # AGGIORNIAMO REALMENTE IL FILE VARS.YML
+            try:
+                vars_data, _ = dao.get_k3s_config()
+                volumes_key = f"{service_name}_storage_volumes"
+                volumes = vars_data.get(volumes_key, [])
+                
+                # Normalizziamo in array
+                if isinstance(volumes, str): 
+                    volumes = [volumes]
+                    
+                # Aggiungiamo i nuovi GB
+                volumes.append(f"{additional_gb}Gi")
+                vars_data[volumes_key] = volumes
+                
+                # Salviamo su file
+                dao.save_k3s_config(vars_data, {})
+                yield json.dumps({"log": "✅ [MOCK] File vars.yml aggiornato istantaneamente.\n"}) + "\n"
+                
+            except Exception as e:
+                yield json.dumps({"success": False, "log": f"\n❌ [MOCK] Errore aggiornamento file: {str(e)}\n"}) + "\n"
+                return
+                
+            # Restituiamo il successo per sbloccare il bottone del Frontend
+            yield json.dumps({"success": True, "log": f"\n🚀 [MOCK] Operazione completata!\n"}) + "\n"
+            return
+            # --- FINE FLUSSO MOCK ---
+
+        # ---------------------------------------------------------
+        # QUI SOTTO C'È IL CODICE REALE (verrà ignorato se MOCK_MODE=True)
+        # ---------------------------------------------------------
+        accounting = ServicesLayerService.get_global_storage_accounting()
+        if additional_gb > accounting.get('safe_free', 0):
+            yield json.dumps({"success": False, "log": f"\n❌ Errore: Spazio insufficiente. Rimasti solo {accounting.get('safe_free')} GB sicuri.\n"}) + "\n"
+            return
+
+        yield json.dumps({"log": f"\n✅ Spazio sufficiente verificato. Aggiornamento vars.yml in corso...\n"}) + "\n"
+
+        vars_data, _ = dao.get_k3s_config()
+        volumes_key = f"{service_name}_storage_volumes"
+        volumes = vars_data.get(volumes_key, [])
+        if isinstance(volumes, str): volumes = [volumes]
+        volumes.append(f"{additional_gb}Gi")
+        vars_data[volumes_key] = volumes
+        dao.save_k3s_config(vars_data, {})
+        
+        total_pvc_gb = sum([int(v.replace('Gi', '').strip()) for v in volumes if isinstance(v, str) and v.endswith('Gi')])
+        new_total_size_str = f"{total_pvc_gb}Gi"
+        
+        yield json.dumps({"log": f"📊 Nuovo totale calcolato per la PVC di {service_name}: {new_total_size_str}\n"}) + "\n"
+
+        extra_vars = f"size={new_total_size_str} pvc_name={service_name}-userdata-pvc"
+        playbook_path = os.path.join(dao.arch_dir, "services", "resize_storage.yml")
+        inventory_path = os.path.join(dao.arch_dir, "inventory.yml") 
+
+        env = os.environ.copy()
+        env["PYTHONUNBUFFERED"] = "1"
+        env["ANSIBLE_HOST_KEY_CHECKING"] = "False"
+
+        cmd = ["ansible-playbook", "-i", inventory_path, playbook_path, "-e", extra_vars]
+        yield json.dumps({"log": "\n🚀 Avvio Ansible Playbook...\n" + "-"*40 + "\n"}) + "\n"
+
+        try:
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, env=env)
+            for line in iter(process.stdout.readline, ''):
+                yield json.dumps({"log": line}) + "\n"
+            process.stdout.close()
+            process.wait()
+            
+            if process.returncode == 0:
+                yield json.dumps({"success": True, "log": f"\n✅ Espansione completata!\n"}) + "\n"
+            else:
+                volumes.pop() 
+                vars_data[volumes_key] = volumes
+                dao.save_k3s_config(vars_data, {})
+                yield json.dumps({"success": False, "log": f"\n❌ Errore Ansible. Modifiche annullate.\n"}) + "\n"
+                
+        except Exception as e:
+            yield json.dumps({"success": False, "log": f"\n❌ Eccezione durante l'esecuzione: {str(e)}\n"}) + "\n"

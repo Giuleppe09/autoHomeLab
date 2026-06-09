@@ -56,29 +56,27 @@ class ServicesController:
             return jsonify({"success": False, "message": f"Errore interno: {str(e)}"}), 500
         
 
-
-
     @staticmethod
-    def expand_nextcloud_storage():
-        """Inietta una NUOVA voce di storage e riesegue il build dichiarativo dell'app"""
+    def expand_storage(service_name):
+        """
+        Controller: Riceve la richiesta di espansione, valida l'input e avvia lo stream Ansible.
+        """
         try:
             data = request.get_json() or {}
-            new_size = data.get('new_size')
+            new_size = data.get('new_size') # I GB da aggiungere (es. 20)
             
-            if not new_size:
-                return jsonify({"success": False, "message": "Dimensione del nuovo entry non pervenuta"}), 400
-                
-            # 1. Aggiungiamo il record in coda all'array vars
-            ServicesLayerService.add_nextcloud_storage_volume(new_size)
-            
-            # 2. Riparshiamo l'intero deployment. Ansible creerà il nuovo PVC separato!
+            if not new_size or int(new_size) <= 0:
+                return jsonify({"success": False, "message": "Dimensione aggiuntiva non valida"}), 400
+
+            # Passiamo al Service Layer che gestirà lo stream
             return Response(
-                ServicesLayerService.execute_nextcloud_stream(), 
-                mimetype='application/json',
-                headers={"Cache-Control": "no-cache"}
+                ServicesLayerService.expand_service_storage(service_name, int(new_size)), 
+                mimetype='application/json'
             )
+            
         except Exception as e:
-            return jsonify({"success": False, "message": str(e)}), 500
+            return jsonify({"success": False, "message": f"Errore interno: {str(e)}"}), 500
+
         
     @staticmethod
     def run_nextcloud_setup():
