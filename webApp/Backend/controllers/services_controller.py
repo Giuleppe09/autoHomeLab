@@ -56,6 +56,8 @@ class ServicesController:
             return jsonify({"success": False, "message": f"Errore interno: {str(e)}"}), 500
         
 
+
+
     @staticmethod
     def expand_nextcloud_storage():
         """Inietta una NUOVA voce di storage e riesegue il build dichiarativo dell'app"""
@@ -96,3 +98,26 @@ class ServicesController:
             )
         except Exception as e:
             return jsonify({"success": False, "message": f"Errore avvio automazione: {str(e)}"}), 500
+    
+    @staticmethod
+    def get_storage_accounting():
+        """
+        Restituisce lo stato aggregato dello storage 
+        dell'intero cluster K3s sommando tutti i servizi.
+        """
+        # Validazione di base (opzionale ma buona pratica)
+        try:
+            accounting = ServicesLayerService.get_storage_accounting()
+            
+            return jsonify({
+                "success": True,
+                "global_allocated_gb": accounting["global_allocated_gb"],
+                "safe_free": accounting["safe_free"],
+                "services_breakdown": accounting["services_breakdown"] 
+            }), 200
+            
+        except Exception as e:
+            return jsonify({
+                "success": False, 
+                "message": f"Errore calcolo storage globale: {str(e)}"
+            }), 500

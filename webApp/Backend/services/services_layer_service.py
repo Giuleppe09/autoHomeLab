@@ -18,47 +18,83 @@ class ServicesLayerService:
         dao.save_k3s_config(existing_vars, {})
         return True
 
+
     @staticmethod
     def get_storage_accounting():
-        """Calcola lo spazio fisico reale e lo spazio sicuro allocabile."""
-        from services.proxmox_service import ProxmoxService
-        
+        """
+        Calcola l'accounting globale leggendo lo spazio fisico dall'NFS 
+        e sommando dinamicamente tutti i volumi allocati nel vars.yml.
+        """
         dao = K3sDAO()
         vars_data, _ = dao.get_k3s_config()
         
-        pool_name = vars_data.get('host_mount_path', 'local-lvm')
-        
-        proxmox_service = ProxmoxService()
-        storage_info = proxmox_service.get_detailed_storages()
+        nfs_ip = vars_data.get('lxc_ip', '192.168.1.X') 
+        nfs_path = vars_data.get('lxc_mount_path', '/mnt/shared') 
+        nfs_user = 'root'
         
         physical_free = 0.0
-        if storage_info.get('success'):
-            for storage in storage_info.get('disk_storages', []):
-                if storage['name'] == pool_name:
-                    physical_free = storage.get('free_gb', 0.0)
-                    break
+        
+        # ==========================================
+        # 🔧 MODALITÀ TEST OFFLINE (MOCK MODE)
+        # Imposta a False quando avrai il server reale
+        MOCK_MODE = True
+        # ==========================================
+        
+        try:
+            if MOCK_MODE:
+                print("🔧 [DEBUG] MOCK_MODE ATTIVO: Simulo la risposta SSH dell'NFS...")
+                simulated_stdout = "/dev/loop0  1000G  200G  800G  20% /mnt/shared\n"
+                parts = simulated_stdout.strip().split()
+            else:
+                ssh_cmd = [
+                    "ssh", 
+                    "-o", "StrictHostKeyChecking=no",
+                    "-o", "ConnectTimeout=5",
+                    f"{nfs_user}@{nfs_ip}", 
+                    f"df -BG {nfs_path} | tail -n 1"
+                ]
+                result = subprocess.run(ssh_cmd, capture_output=True, text=True, check=True)
+                parts = result.stdout.strip().split()
+                
+            if len(parts) >= 4:
+                physical_free = float(parts[3].replace('G', ''))
+                
+        except Exception as e:
+            print(f"⚠️ Errore di connessione SSH all'LXC NFS ({nfs_ip}): {e}")
+            physical_free = 0.0 
                     
-        allocated_gb = 0
-        volumes = vars_data.get('nextcloud_storage_volumes', [])
-        if isinstance(volumes, str):
-            volumes = [volumes]
-            
-        for vol in volumes:
-            if isinstance(vol, str) and vol.endswith('Gi'):
-                try:
-                    allocated_gb += int(vol.replace('Gi', '').strip())
-                except ValueError:
-                    pass
-                    
-        safe_free = round(physical_free - allocated_gb, 1)
+        # 3. COMPUTAZIONE GLOBALE E BREAKDOWN DEI PVC
+        global_allocated_gb = 0
+        services_breakdown = {} # <-- NUOVO: Dizionario per tracciare i singoli servizi
+        
+        for key, value in vars_data.items():
+            if key.endswith('_storage_volumes'):
+                # Ricaviamo il nome pulito del servizio (es: "nextcloud")
+                srv_name = key.replace('_storage_volumes', '')
+                service_total = 0
+                
+                volumes = value if isinstance(value, list) else [value]
+                for vol in volumes:
+                    if isinstance(vol, str) and vol.endswith('Gi'):
+                        try:
+                            service_total += int(vol.replace('Gi', '').strip())
+                        except ValueError:
+                            pass
+                
+                # Salviamo il parziale e aggiorniamo il totale globale
+                services_breakdown[srv_name] = service_total
+                global_allocated_gb += service_total
+                            
+        # 4. CALCOLO OVERPROVISIONING
+        safe_free = round(physical_free - global_allocated_gb, 1)
         if safe_free < 0:
             safe_free = 0.0
             
         return {
-            "pool_name": pool_name,
             "physical_free": physical_free,
-            "allocated_gb": allocated_gb,
-            "safe_free": safe_free
+            "global_allocated_gb": global_allocated_gb,
+            "safe_free": safe_free,
+            "services_breakdown": services_breakdown # <-- NUOVO: Restituiamo il dettaglio
         }
 
     @staticmethod
