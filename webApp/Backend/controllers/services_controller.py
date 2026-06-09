@@ -16,44 +16,40 @@ class ServicesController:
 
     @staticmethod
     def save_nextcloud_config():
-        """Estrae ed archivia i dati dal payload dinamico inclusa l'allocazione storage iniziale"""
+        """Estrae ed archivia i dati dal payload web, validandoli (Service Layer)"""
         try:
             data = request.get_json() or {}
             username = data.get('nextcloud_user')
             password = data.get('nextcloud_password')
-            
-            # Estraiamo anche i dati dello storage passati dal JS
-            disk_storage = data.get('nextcloud_disk_storage')
             storage_size = data.get('nextcloud_storage_size') 
             
-            # Validazione
+            # Validazione dei campi
             if not username or not password:
                 return jsonify({"success": False, "message": "Dati di autenticazione Nextcloud incompleti"}), 400
                 
-            if not storage_size or not disk_storage:
-                return jsonify({"success": False, "message": "Dati di storage (dimensione o pool) non specificati"}), 400
+            if not storage_size:
+                return jsonify({"success": False, "message": "Dimensione della quota di storage non specificata"}), 400
 
-            # Pulizia e formattazione della dimensione (es. trasforma '50' in '50Gi')
+            # Pulizia e formattazione della dimensione
             storage_clean = str(storage_size).strip().upper().replace('GI', '')
             if not storage_clean.isdigit():
                 return jsonify({"success": False, "message": "Formato dimensione storage non valido"}), 400
 
-            # 1. Creiamo la lista per il PVC (Task 2 di Ansible)
+            # Creazione dell'array per il PVC di K3s
             data['nextcloud_storage_volumes'] = [f"{storage_clean}Gi"]
             
-            # 2. Assegniamo il pool NFS dove montarlo
-            data['nextcloud_disk_storage'] = disk_storage
-            
-            # Rimuoviamo la vecchia chiave ridondante prima di salvare
+            # Pulizia delle chiavi temporanee usate dal front-end
             if 'nextcloud_storage_size' in data:
                 del data['nextcloud_storage_size']
+            if 'nextcloud_disk_storage' in data:
+                del data['nextcloud_disk_storage']
 
-            # Invocazione del Service Layer per scrivere nel vars.yml
+            # Invocazione del Service Layer VERO passandogli il dizionario pulito
             ServicesLayerService.save_nextcloud_config(data)
             
             return jsonify({
                 "success": True, 
-                "message": "Configurazione applicativa e storage registrati con successo"
+                "message": "Configurazione applicativa e quota storage registrate con successo"
             }), 200
             
         except Exception as e:
