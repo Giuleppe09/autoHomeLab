@@ -16,21 +16,49 @@ class ServicesController:
 
     @staticmethod
     def save_nextcloud_config():
-        """Estrae ed archivia i dati dal payload dinamico"""
+        """Estrae ed archivia i dati dal payload dinamico inclusa l'allocazione storage iniziale"""
         try:
             data = request.get_json() or {}
             username = data.get('nextcloud_user')
             password = data.get('nextcloud_password')
             
+            # Estraiamo anche i dati dello storage passati dal JS
+            disk_storage = data.get('nextcloud_disk_storage')
+            storage_size = data.get('nextcloud_storage_size') 
+            
+            # Validazione
             if not username or not password:
                 return jsonify({"success": False, "message": "Dati di autenticazione Nextcloud incompleti"}), 400
+                
+            if not storage_size or not disk_storage:
+                return jsonify({"success": False, "message": "Dati di storage (dimensione o pool) non specificati"}), 400
+
+            # Pulizia e formattazione della dimensione (es. trasforma '50' in '50Gi')
+            storage_clean = str(storage_size).strip().upper().replace('GI', '')
+            if not storage_clean.isdigit():
+                return jsonify({"success": False, "message": "Formato dimensione storage non valido"}), 400
+
+            # 1. Creiamo la lista per il PVC (Task 2 di Ansible)
+            data['nextcloud_storage_volumes'] = [f"{storage_clean}Gi"]
             
+            # 2. Assegniamo il pool NFS dove montarlo
+            data['nextcloud_disk_storage'] = disk_storage
+            
+            # Rimuoviamo la vecchia chiave ridondante prima di salvare
+            if 'nextcloud_storage_size' in data:
+                del data['nextcloud_storage_size']
+
+            # Invocazione del Service Layer per scrivere nel vars.yml
             ServicesLayerService.save_nextcloud_config(data)
             
-            return jsonify({"success": True, "message": "Configurazione applicativa registrata"}), 200
+            return jsonify({
+                "success": True, 
+                "message": "Configurazione applicativa e storage registrati con successo"
+            }), 200
+            
         except Exception as e:
             return jsonify({"success": False, "message": f"Errore interno: {str(e)}"}), 500
-
+        
 
     @staticmethod
     def expand_nextcloud_storage():
