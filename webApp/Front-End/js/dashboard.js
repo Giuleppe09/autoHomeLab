@@ -25,7 +25,7 @@ async function loadDashboardData() {
             document.getElementById('dash-nfs-mount').innerText = currentState.host_mount_path || '-';
             
             // Popola Nextcloud e Link
-            document.getElementById('dash-nc-admin').innerText = currentState.nextcloud_admin_user || '-';
+            document.getElementById('dash-nc-admin').innerText = currentState.nextcloud_user || currentState.nextcloud_admin_user || '-';
             
             // LOGICA MULTI-VOLUME: Unisce l'array dei dischi con un "+"
             let pvcDisplay = '-';
@@ -42,15 +42,21 @@ async function loadDashboardData() {
             const dashNcPvc = document.getElementById('dash-nc-pvc');
             if (dashNcPvc) dashNcPvc.innerText = pvcDisplay.replace(/Gi/g, ' GB');
             
-            if (currentState.k3s_agent_ip) {
-                const agentIp = currentState.k3s_agent_ip.split('/')[0];
-                const ncUrl = `http://${agentIp}:30080`;
-                const linkObj = document.getElementById('dash-nc-link');
-                if(linkObj) {
-                    linkObj.href = ncUrl;
-                    // Mostriamo l'URL ma lo manteniamo esteticamente pulito
-                    linkObj.innerText = `🔗 Apri Web UI Nextcloud ➡️`;
-                }
+            // Gestione Link Nextcloud - IP Fallback e prevenzione ricaricamento
+            // Se k3s_agent_ip manca per qualche motivo, tenta gli altri nodi noti al backend
+            const agentIpRaw = currentState.k3s_agent_ip || currentState.k3s_server_ip || currentState.lxc_ip || '127.0.0.1';
+            const agentIp = agentIpRaw.split('/')[0];
+            const ncUrl = `http://${agentIp}:30080`;
+            const linkObj = document.getElementById('dash-nc-link');
+            
+            if (linkObj) {
+                linkObj.style.cursor = 'pointer';
+                linkObj.innerText = `🔗 Apri Web UI Nextcloud ➡️`;
+                linkObj.title = ncUrl; // Mostra l'URL reale passando il mouse sopra al link
+                linkObj.onclick = (e) => {
+                    if (e && e.preventDefault) e.preventDefault(); // Previene il ricaricamento della pagina se è un tag <a href="#">
+                    window.open(ncUrl, '_blank');
+                };
             }
         }
     } catch (error) {
@@ -67,6 +73,17 @@ async function openStorageModal(serviceName) {
     if (titleElement && serviceName) {
         const nomePulito = serviceName.charAt(0).toUpperCase() + serviceName.slice(1);
         titleElement.innerText = `⚙️ Gestione Storage ${nomePulito}`;
+    }
+
+    // Aggiungiamo un tasto "Chiudi" (X) in alto a destra del modale per semplicità
+    const modalHeader = titleElement ? titleElement.parentNode : null;
+    if (modalHeader && !document.getElementById('modal-close-button')) {
+        const closeBtn = document.createElement('span');
+        closeBtn.id = 'modal-close-button';
+        closeBtn.innerHTML = '&times;'; // Carattere 'X' per chiudere
+        closeBtn.style.cssText = 'position: absolute; top: 15px; right: 20px; font-size: 28px; font-weight: bold; cursor: pointer; color: #a9b1d6; line-height: 1;';
+        closeBtn.onclick = closeStorageModal;
+        modalHeader.appendChild(closeBtn);
     }
 
     // Mostra il modale e la schermata di caricamento, nasconde i controlli

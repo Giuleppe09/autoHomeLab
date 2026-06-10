@@ -97,25 +97,39 @@ class ServicesController:
         except Exception as e:
             return jsonify({"success": False, "message": f"Errore avvio automazione: {str(e)}"}), 500
     
+
+    
     @staticmethod
     def get_storage_accounting():
         """
         Restituisce lo stato aggregato dello storage 
         dell'intero cluster K3s sommando tutti i servizi.
+        Il controller si occupa di comporre la struttura del JSON.
         """
-        # Validazione di base (opzionale ma buona pratica)
         try:
-            accounting = ServicesLayerService.get_storage_accounting()
+            # Chiamata al Service Layer
+            accounting = ServicesLayerService.get_global_storage_accounting()
             
+            # CONTROLLO CRITICO: Se il Service Layer ha fallito la connessione/il comando SSH,
+            # restituisce un dizionario con success=False. Lo intercettiamo qui.
+            if not accounting.get("success", False):
+                return jsonify({
+                    "success": False,
+                    "message": accounting.get("message", "Errore sconosciuto nell'infrastruttura di storage.")
+                }), 500 # Restituiamo un errore 500 per bloccare il Front-End
+    
+            # CASO DI SUCCESSO: Il controller compone autonomamente il JSON finale
             return jsonify({
                 "success": True,
+                "total_cluster_gb": accounting.get("physical_free", 0),
                 "global_allocated_gb": accounting["global_allocated_gb"],
                 "safe_free": accounting["safe_free"],
                 "services_breakdown": accounting["services_breakdown"] 
             }), 200
             
         except Exception as e:
+            # Gestione di eccezioni impreviste (es. KeyError se mancasse qualche chiave nel dizionario)
             return jsonify({
                 "success": False, 
-                "message": f"Errore calcolo storage globale: {str(e)}"
+                "message": f"Errore critico nel controller dello storage: {str(e)}"
             }), 500

@@ -21,7 +21,7 @@ class ServicesLayerService:
 
 
     @staticmethod
-    def get_storage_accounting():
+    def get_global_storage_accounting():
         """
         Calcola l'accounting globale leggendo lo spazio fisico dall'NFS 
         e sommando dinamicamente tutti i volumi allocati nel vars.yml.
@@ -29,7 +29,8 @@ class ServicesLayerService:
         dao = K3sDAO()
         vars_data, _ = dao.get_k3s_config()
         
-        nfs_ip = vars_data.get('lxc_ip', '192.168.1.X') 
+        nfs_ip_raw = vars_data.get('nfs_ip', vars_data.get('lxc_ip', '192.168.1.X'))
+        nfs_ip = nfs_ip_raw.split('/')[0]
         nfs_path = vars_data.get('lxc_mount_path', '/mnt/shared') 
         nfs_user = 'root'
         
@@ -62,7 +63,10 @@ class ServicesLayerService:
                 
         except Exception as e:
             print(f"⚠️ Errore di connessione SSH all'LXC NFS ({nfs_ip}): {e}")
-            physical_free = 0.0 
+            return {
+                "success": False,
+                "message": f"Errore di connessione SSH all'LXC NFS: {str(e)}"
+            }
                     
         # 3. COMPUTAZIONE GLOBALE E BREAKDOWN DEI PVC
         global_allocated_gb = 0
@@ -92,6 +96,7 @@ class ServicesLayerService:
             safe_free = 0.0
             
         return {
+            "success": True,
             "physical_free": physical_free,
             "global_allocated_gb": global_allocated_gb,
             "safe_free": safe_free,
@@ -183,6 +188,10 @@ class ServicesLayerService:
         # QUI SOTTO C'È IL CODICE REALE (verrà ignorato se MOCK_MODE=True)
         # ---------------------------------------------------------
         accounting = ServicesLayerService.get_global_storage_accounting()
+        if not accounting.get('success', False):
+            yield json.dumps({"success": False, "log": f"\n❌ Errore Backend: {accounting.get('message', 'Errore sconosciuto nello storage.')}\n"}) + "\n"
+            return
+
         if additional_gb > accounting.get('safe_free', 0):
             yield json.dumps({"success": False, "log": f"\n❌ Errore: Spazio insufficiente. Rimasti solo {accounting.get('safe_free')} GB sicuri.\n"}) + "\n"
             return
@@ -203,7 +212,7 @@ class ServicesLayerService:
         yield json.dumps({"log": f"📊 Nuovo totale calcolato per la PVC di {service_name}: {new_total_size_str}\n"}) + "\n"
 
         extra_vars = f"size={new_total_size_str} pvc_name={service_name}-userdata-pvc"
-        playbook_path = os.path.join(dao.arch_dir, "services", "resize_storage.yml")
+        playbook_path = os.path.join(dao.arch_dir, "services", "nextcloud_resize.yml")
         inventory_path = os.path.join(dao.arch_dir, "inventory.yml") 
 
         env = os.environ.copy()

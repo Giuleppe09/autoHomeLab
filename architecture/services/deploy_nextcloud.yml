@@ -102,6 +102,7 @@
             ports:
               - port: 80
                 targetPort: 80
+                nodePort: 30080
 
     - name: 4. Applica il manifesto dei PVC al cluster
       ansible.builtin.command: kubectl apply -f /root/k8s-manifests/nextcloud/nextcloud-pvc.yaml

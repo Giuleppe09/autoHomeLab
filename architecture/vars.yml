@@ -30,4 +30,5 @@ k3s_disk_storage: local-lvm
 nextcloud_user: admin
 nextcloud_password: '2406'
 nextcloud_storage_volumes:
-- 500Gi
+- 479Gi
+- 200Gi
