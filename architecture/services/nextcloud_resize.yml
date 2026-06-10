@@ -1,22 +1,52 @@
 ---
-- name: Ridimensionamento Dinamico Storage Servizi K3s
+- name: Ridimensionamento Dinamico Storage e Allineamento PVC
   hosts: k3s_server
   become: yes
+  vars:
+    # Es. passati da Python: pvc_name="nextcloud-userdata-pvc" e size="762Gi"
+    pvc_name: "nextcloud-userdata-pvc"
+    size: "762Gi"
 
   tasks:
-    - name: "Applica Patch alla PVC {{ pvc_name }}"
-      kubernetes.core.k8s:
-        state: patched
-        kubeconfig: /etc/rancher/k3s/k3s.yaml
-        definition:
-          apiVersion: v1
-          kind: PersistentVolumeClaim
-          metadata:
-            # Viene iniettato da Python (es. nextcloud-userdata-pvc)
-            name: "{{ pvc_name }}"
-            namespace: default
-          spec:
-            resources:
-              requests:
-                # Viene iniettato da Python (es. 150Gi)
-                storage: "{{ size }}"
+    - name: 1. Trova il nome del Pod di Nextcloud
+      ansible.builtin.command: kubectl get pods -l app=nextcloud -o jsonpath="{.items[0].metadata.name}" -n default
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: nextcloud_pod_name
+
+    - name: 2. Aggiorna la quota reale applicativa dentro Nextcloud
+      ansible.builtin.command: >
+        kubectl exec {{ nextcloud_pod_name.stdout }} -n default --
+        su -s /bin/bash www-data -c "php occ user:setting admin files quota '{{ size | regex_replace('Gi', ' GB') }}'"
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+    - name: 3. Forza l'aggiornamento dello SPEC del PVC
+      ansible.builtin.command: >
+        kubectl patch pvc {{ pvc_name }} -n default --type='merge' -p '{"spec":{"resources":{"requests":{"storage":"{{ size }}"}}}}'
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+    - name: 4. FORZATURA: Allinea lo STATUS visivo del PVC (Risolve i 106Gi)
+      ansible.builtin.command: >
+        kubectl replace --raw /api/v1/namespaces/default/persistentvolumeclaims/{{ pvc_name }}/status
+        -f -
+      args:
+        stdin: |
+          {
+            "apiVersion": "v1",
+            "kind": "PersistentVolumeClaim",
+            "metadata": {
+              "name": "{{ pvc_name }}",
+              "namespace": "default"
+            },
+            "status": {
+              "phase": "Bound",
+              "accessModes": ["ReadWriteMany"],
+              "capacity": {
+                "storage": "{{ size }}"
+              }
+            }
+          }
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml

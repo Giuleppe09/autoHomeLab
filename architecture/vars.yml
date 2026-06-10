@@ -18,11 +18,11 @@ nfs_hostname: nfs-server
 nfs_vmid: 104
 k3s_server_hostname: K3s-Server
 k3s_server_vmid: 101
-k3s_server_ip: 192.168.1.210/24
+k3s_server_ip: 192.168.1.217/24
 k3s_server_gw: 192.168.1.1
 k3s_agent_hostname: K3s-Agent
 k3s_agent_vmid: 102
-k3s_agent_ip: 192.168.1.211/24
+k3s_agent_ip: 192.168.1.218/24
 k3s_agent_gw: 192.168.1.1
 k3s_user: kubeuser
 k3s_template_storage: Storage-1TB
@@ -30,5 +30,5 @@ k3s_disk_storage: local-lvm
 nextcloud_user: admin
 nextcloud_password: '2406'
 nextcloud_storage_volumes:
-- 479Gi
-- 200Gi
+- 106Gi
+- 20Gi

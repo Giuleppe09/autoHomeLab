@@ -222,6 +222,8 @@ class ServicesLayerService:
         cmd = ["ansible-playbook", "-i", inventory_path, playbook_path, "-e", extra_vars]
         yield json.dumps({"log": "\n🚀 Avvio Ansible Playbook...\n" + "-"*40 + "\n"}) + "\n"
 
+        print(f"🔍 [DEBUG] Comando Ansible: {' '.join(cmd)}")
+
         try:
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, env=env)
             for line in iter(process.stdout.readline, ''):
