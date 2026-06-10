@@ -46,43 +46,42 @@
 
             <div class="dash-card" style="border-color: #9ece6a; position: relative;">
                 <h3>☁️ Nextcloud (K3s)</h3>
-                <p><strong>Admin:</strong> <span id="dash-nc-admin">-</span></p>
-                <p><strong>PVC Primario:</strong> <span id="dash-nc-pvc">-</span> GB</p>
                 <p style="margin-top: 15px;">
                     <a id="dash-nc-link" href="#" target="_blank" style="color: #9ece6a; font-weight: bold; text-decoration: none;">🔗 Apri Web UI Nextcloud ➡️</a>
                 </p>
-                <button class="btn-action" onclick="openStorageModal()">⚙️ Gestisci Storage</button>
+                <button class="btn-action" onclick="openStorageModal('nextcloud')" style="margin-top: 15px;">⚙️ Gestisci Storage</button>
             </div>
         </div>
     </div>
 
     <div id="storage-modal" class="modal hidden">
         <div class="modal-content card">
-            <h2>⚙️ Gestione Storage Nextcloud</h2>
-            <div id="storage-loading" style="text-align: center; color: #e0af68; margin: 20px 0;">
-                ⏳ Scansione dei dischi Proxmox in corso...
+            <h2 id="modal-storage-title">⚙️ Gestione Storage</h2>
+            
+            <div id="storage-loading" style="text-align: center; color: #e0af68; margin: 20px 0; display: none;">
+                ⏳ Calcolo dello storage globale in corso...
             </div>
             
             <div id="storage-controls" class="hidden">
-                <div class="storage-info-box">
-                    <p style="margin:0 0 10px 0;">📡 <b>Stato Storage Proxmox (NFS Mount)</b></p>
-                    <p style="margin:5px 0;">Pool Utilizzato: <strong id="modal-pool-name">-</strong></p>
-                    <p style="margin:5px 0; color: #9ece6a;">Spazio Libero Reale: <strong id="modal-free-space">-</strong> GB</p>
+                <p><strong>Allocato Totale Cluster:</strong> <span id="modal-current-pvc">-</span></p>
+                <p><strong>Spazio Sicuro Disponibile:</strong> <span id="modal-free-space">-</span> GB</p>
+
+                <hr style="margin: 15px 0; border: 1px solid #414868;">
+                <h4 style="margin-bottom: 10px; color: #7aa2f7;">Dettaglio Servizi:</h4>
+                <div id="services-breakdown-list" style="margin-bottom: 20px; padding: 10px; background: #1f2335; border-radius: 5px; border: 1px solid #414868;">
+                    </div>
+                <hr style="margin: 15px 0; border: 1px solid #414868;">
+
+                <div style="margin-top: 15px; display: flex; align-items: center; gap: 10px;">
+                    <label for="new_pvc_size">GB da aggiungere:</label>
+                    <input type="number" id="new_pvc_size" min="1" class="form-control" style="width: 100px; padding: 5px; background: #24283b; color: #a9b1d6; border: 1px solid #414868;">
                 </div>
 
-                <div class="form-group">
-                    <label>Nuova Quota PVC per Nextcloud (GB):</label>
-                    <input type="number" id="new_pvc_size" class="form-control" placeholder="Es. 100">
-                    <small style="color: #a9b1d6;">Taglio del NUOVO disco da aggiungere. (Dischi attuali: <span id="modal-current-pvc"></span>).</small>
-                </div>
+                <button id="btn-expand" class="btn-action" onclick="expandStorage()" style="margin-top: 15px;">
+                    🚀 Applica Espansione
+                </button>
 
-
-                <div class="actions" style="display: flex; gap: 10px; margin-top: 20px;">
-                    <button type="button" onclick="closeStorageModal()" class="btn-secondary" style="flex: 1;">Annulla</button>
-                    <button type="button" onclick="expandStorage()" id="btn-expand" class="btn-primary" style="flex: 1; background-color: #9ece6a; color: #1a1b26;">Applica Espansione</button>
-                </div>
-                
-                <div id="resize-console" class="hidden" style="background-color: #000; color: #0f0; font-family: monospace; padding: 10px; height: 150px; overflow-y: auto; text-align: left; border-radius: 5px; margin-top: 15px; font-size: 0.85em;"></div>
+                <pre id="resize-console" class="hidden" style="margin-top: 20px; background: #1a1b26; color: #a9b1d6; padding: 15px; border-radius: 5px; max-height: 200px; overflow-y: auto; font-size: 0.85em; border: 1px solid #414868; white-space: pre-wrap; text-align: left;"></pre>
             </div>
         </div>
     </div>

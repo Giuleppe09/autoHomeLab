@@ -38,7 +38,7 @@ class ServicesLayerService:
         # ==========================================
         # 🔧 MODALITÀ TEST OFFLINE (MOCK MODE)
         # Imposta a False quando avrai il server reale
-        MOCK_MODE = True
+        MOCK_MODE = False
         # ==========================================
         
         try:
@@ -144,7 +144,7 @@ class ServicesLayerService:
         """
         # ==========================================
         # 🔧 MODALITÀ TEST OFFLINE (MOCK MODE)
-        MOCK_MODE = True
+        MOCK_MODE = False
         # ==========================================
 
         dao = K3sDAO()

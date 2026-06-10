@@ -29,13 +29,11 @@
             resources:
               requests:
                 storage: 5Gi
-          {# Ciclo dinamico sulla lista dei volumi dati #}
-          {% for size in nextcloud_storage_volumes | default(['50Gi']) %}
           ---
           apiVersion: v1
           kind: PersistentVolumeClaim
           metadata:
-            name: nextcloud-userdata-pvc-{{ loop.index }}
+            name: nextcloud-userdata-pvc
             namespace: default
           spec:
             accessModes:
@@ -43,8 +41,8 @@
             storageClassName: nfs-storage
             resources:
               requests:
-                storage: {{ size | quote }}
-          {% endfor %}
+                storage: {{ nextcloud_storage_volumes | first }}
+
 
     - name: 3. Genera il manifesto per il Deployment e il Service
       ansible.builtin.copy:
@@ -72,28 +70,25 @@
                       - containerPort: 80
                     env:
                       - name: NEXTCLOUD_ADMIN_USER
-                        value: {{ nextcloud_admin_user | quote }}
+                        # CORRETTO: Usa il nome esatto della variabile salvata in vars.yml
+                        value: {{ nextcloud_user | quote }}
                       - name: NEXTCLOUD_ADMIN_PASSWORD
-                        value: {{ nextcloud_admin_password | quote }}
+                        # CORRETTO: Usa il nome esatto della variabile salvata in vars.yml
+                        value: {{ nextcloud_password | quote }}
                       - name: NEXTCLOUD_TRUSTED_DOMAINS
                         value: {{ k3s_agent_ip.split('/')[0] | quote }}
                     volumeMounts:
                       - name: nextcloud-config
                         mountPath: /var/www/html/config
-                      {# Genera un mount point differente per ogni volume aggiunto #}
-                      {% for size in nextcloud_storage_volumes | default(['50Gi']) %}
-                      - name: nextcloud-data-{{ loop.index }}
-                        mountPath: /var/www/html/data{{ "" if loop.index == 1 else loop.index }}
-                      {% endfor %}
+                      - name: nextcloud-data
+                        mountPath: /var/www/html/data
                 volumes:
                   - name: nextcloud-config
                     persistentVolumeClaim:
                       claimName: nextcloud-config-pvc
-                  {% for size in nextcloud_storage_volumes | default(['50Gi']) %}
-                  - name: nextcloud-data-{{ loop.index }}
+                  - name: nextcloud-data
                     persistentVolumeClaim:
-                      claimName: nextcloud-userdata-pvc-{{ loop.index }}
-                  {% endfor %}
+                      claimName: nextcloud-userdata-pvc
           ---
           apiVersion: v1
           kind: Service
@@ -107,7 +102,6 @@
             ports:
               - port: 80
                 targetPort: 80
-                nodePort: 30080
 
     - name: 4. Applica il manifesto dei PVC al cluster
       ansible.builtin.command: kubectl apply -f /root/k8s-manifests/nextcloud/nextcloud-pvc.yaml

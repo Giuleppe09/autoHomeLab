@@ -1,0 +1,22 @@
+---
+- name: Ridimensionamento Dinamico Storage Servizi K3s
+  hosts: k3s_server
+  become: yes
+
+  tasks:
+    - name: "Applica Patch alla PVC {{ pvc_name }}"
+      kubernetes.core.k8s:
+        state: patched
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        definition:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            # Viene iniettato da Python (es. nextcloud-userdata-pvc)
+            name: "{{ pvc_name }}"
+            namespace: default
+          spec:
+            resources:
+              requests:
+                # Viene iniettato da Python (es. 150Gi)
+                storage: "{{ size }}"

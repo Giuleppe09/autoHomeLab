@@ -29,24 +29,41 @@ const serviceRegistry = {
         </div>
     `
 };
-
 async function selectService(serviceName) {
     currentService = serviceName;
     
-    // Evidenzia visivamente la card attiva
+    // 1. Evidenzia visivamente la card attiva
     document.querySelectorAll('.service-card').forEach(c => c.classList.remove('active'));
     document.getElementById(`card-${serviceName}`).classList.add('active');
     
-    // Iniezione HTML dinamico del form
+    // 2. Iniezione HTML dinamico del form nel container
     const fieldsContainer = document.getElementById('service-fields');
     fieldsContainer.innerHTML = serviceRegistry[serviceName] || '<p>Nessun parametro richiesto per questa applicazione.</p>';
     
-    // Mostra le sezioni grafiche corrette
-    document.getElementById('form-title').innerText = `⚙️ Configurazione: ${serviceName.toUpperCase()}`;
-    document.getElementById('form-section').classList.remove('hidden');
-    document.getElementById('setup-section').classList.add('hidden');
+    // 3. Mostra la sezione dei parametri SOLO ORA (rimuovendo la classe hidden o forzando il display)
+    const formSection = document.getElementById('form-section');
+    if (formSection) {
+        formSection.classList.remove('hidden');
+        formSection.style.display = 'block'; // Forza la visibilità contro ogni dubbio CSS
+    }
     
-    // Recupera in tempo reale le informazioni reali sullo storage da Proxmox
+    // 4. Aggiorna il titolo dinamico e resetta il setup successivo
+    document.getElementById('form-title').innerText = `⚙️ Configurazione: ${serviceName.toUpperCase()}`;
+    
+    const setupSection = document.getElementById('setup-section');
+    if (setupSection) {
+        setupSection.classList.add('hidden');
+        setupSection.style.display = 'none';
+    }
+    
+    // 5. Disabilita cautelativamente il tasto Salva prima del check degli storage
+    const btnSave = document.getElementById('btn-save');
+    if (btnSave) {
+        btnSave.disabled = true;
+        btnSave.innerText = "⏳ In attesa degli storage Proxmox...";
+    }
+    
+    // 6. Recupera in tempo reale le informazioni reali sullo storage da Proxmox
     if (serviceName === 'nextcloud') {
         await updateStorageHelperInfo();
     }
@@ -59,6 +76,7 @@ async function updateStorageHelperInfo() {
     const storageVal = document.getElementById('storage-val');
     const rangeMax = document.getElementById('range-max');
     const sliderContainer = document.getElementById('nextcloud_storage_size_container');
+    const btnSave = document.getElementById('btn-save');
     
     try {
         const response = await fetch('/api/storages');
@@ -103,13 +121,31 @@ async function updateStorageHelperInfo() {
             
             // Trigger iniziale per impostare la manopola sul primo storage
             updateSlider();
+
+            // ATTIVAZIONE REATTIVA: Gli storage sono validi, attiviamo il pulsante di salvataggio
+            if (btnSave) {
+                btnSave.disabled = false;
+                btnSave.innerText = "Salva Configurazione";
+            }
         } else {
-            helper.innerText = "⚠️ Impossibile leggere i dettagli dello storage. Inserimento libero attivo.";
-            if (storageSelect) storageSelect.innerHTML = '<option value="">Nessun storage compatibile trovato</option>';
+            // STRUTTURA DI BLOCCO: Nessuno storage rilevato dall'endpoint
+            helper.innerText = "❌ Impossibile procedere: nessun storage compatibile rilevato su Proxmox.";
+            if (storageSelect) storageSelect.innerHTML = '<option value="">Nessun storage disponibile</option>';
+            
+            if (btnSave) {
+                btnSave.disabled = true;
+                btnSave.innerText = "❌ Configurazione Bloccata (Manca Storage)";
+            }
         }
     } catch (e) {
-        helper.innerText = "❌ Errore di connessione con l'API Storage di Proxmox.";
+        // STRUTTURA DI BLOCCO: Errore di rete o crash dell'endpoint
+        helper.innerText = "❌ Errore critico di connessione con l'API Storage di Proxmox.";
         if (storageSelect) storageSelect.innerHTML = '<option value="">Errore di rete</option>';
+        
+        if (btnSave) {
+            btnSave.disabled = true;
+            btnSave.innerText = "❌ Configurazione Bloccata (Errore API)";
+        }
     }
 }
 
@@ -120,6 +156,12 @@ async function saveServiceConfig() {
     const formElement = document.getElementById('dynamic-service-form');
     const formData = new FormData(formElement);
     const payload = Object.fromEntries(formData.entries());
+
+    // LOCK DI SICUREZZA LATO CLIENT: Blocca l'invio in caso di assenza storage (anti manomissione HTML)
+    if (!payload.nextcloud_disk_storage || payload.nextcloud_disk_storage === "") {
+        alert("❌ Errore: È obbligatorio selezionare uno storage di destinazione valido per poter procedere.");
+        return;
+    }
 
     // Validazione preventiva lato client sullo spazio massimo inserito
     const storageInput = document.getElementById('nextcloud_storage_size');
@@ -160,6 +202,10 @@ async function saveServiceConfig() {
         if (setupTitle) setupTitle.innerText = `🚀 Deploy ${currentService.toUpperCase()}`;
         if (setupSection) setupSection.classList.remove('hidden');
 
+        // Reset visivo preventiva: svuota vecchi messaggi di successo da deploy passati
+        const urlContainer = document.getElementById('success-url-container');
+        if (urlContainer) urlContainer.classList.add('hidden');
+
     } catch (error) {
         alert("❌ Errore: " + error.message);
         if (btnSave) {
@@ -173,9 +219,13 @@ async function saveServiceConfig() {
 async function runServiceSetup() {
     const btnRun = document.getElementById('btn-run');
     const consoleOutput = document.getElementById('console-output');
+    const urlContainer = document.getElementById('success-url-container');
 
     btnRun.disabled = true;
     btnRun.innerText = "⏳ Installazione in corso...";
+    
+    // GESTIONE CONDIZIONALE: Nasconde il container fino all'esplicito feedback positivo del server
+    if (urlContainer) urlContainer.classList.add('hidden');
     
     consoleOutput.classList.remove('hidden');
     consoleOutput.innerText = `Inizializzazione playbook Ansible per il deploy di ${currentService}...\n\n`;
@@ -206,21 +256,23 @@ async function runServiceSetup() {
                     
                     if (parsed.success === true) {
                         const btnHome = document.getElementById('btn-home');
-                        btnHome.classList.remove('hidden');
-                        btnHome.disabled = false;
+                        if (btnHome) {
+                            btnHome.classList.remove('hidden');
+                            btnHome.disabled = false;
+                            btnHome.onclick = () => window.location.href = '/dashboard';
+                        }
                         
                         btnRun.classList.replace('btn-primary', 'btn-secondary');
                         btnRun.innerText = "Completato ✔️";
 
-                        // Se il backend ha restituito un URL (es. Nextcloud) lo mostriamo a schermo
-                        if (parsed.url) {
-                            const urlContainer = document.getElementById('success-url-container');
+                        // RENDERING DI SICUREZZA: Mostra l'URL e sblocca il box solo se parsed.success è esplicitamente true
+                        if (parsed.url && urlContainer) {
                             const linkElement = document.getElementById('nextcloud-link');
-                            if (urlContainer && linkElement) {
+                            if (linkElement) {
                                 linkElement.href = parsed.url;
                                 linkElement.innerText = parsed.url;
-                                urlContainer.classList.remove('hidden');
                             }
+                            urlContainer.classList.remove('hidden');
                         }
                     }
 
@@ -228,16 +280,6 @@ async function runServiceSetup() {
                         if (parsed.log.includes("PLAY [")) consoleOutput.innerText = "";
                         consoleOutput.innerText += parsed.log;
                         consoleOutput.scrollTop = consoleOutput.scrollHeight;
-                    }
-
-                    if (parsed.success === true) {
-                        const btnHome = document.getElementById('btn-home');
-                        btnHome.classList.remove('hidden');
-                        btnHome.disabled = false;
-                        btnHome.onclick = () => window.location.href = '/dashboard';
-                        
-                        btnRun.classList.replace('btn-primary', 'btn-secondary');
-                        btnRun.innerText = "Completato ✔️";
                     }
                 } catch (e) {}
             }

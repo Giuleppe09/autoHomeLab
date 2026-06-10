@@ -7,7 +7,7 @@ lxc_ip: 192.168.1.203/24
 lxc_gw: 192.168.1.1
 lxc_template_storage: Storage-1TB
 lxc_disk_storage: local-lvm
-nfs_ip: 192.168.1.204/24
+nfs_ip: 192.168.1.206/24
 nfs_network: 192.168.1.0/24
 nfs_gw: 192.168.1.1
 nfs_template_storage: Storage-1TB
@@ -15,18 +15,19 @@ nfs_disk_storage: local-lvm
 host_mount_path: Storage-1TB
 lxc_mount_path: /mnt/hdd_data
 nfs_hostname: nfs-server
-nfs_vmid: 101
+nfs_vmid: 104
 k3s_server_hostname: K3s-Server
-k3s_server_vmid: 102
-k3s_server_ip: 192.168.1.207/24
+k3s_server_vmid: 101
+k3s_server_ip: 192.168.1.210/24
 k3s_server_gw: 192.168.1.1
 k3s_agent_hostname: K3s-Agent
-k3s_agent_vmid: 103
-k3s_agent_ip: 192.168.1.208/24
+k3s_agent_vmid: 102
+k3s_agent_ip: 192.168.1.211/24
 k3s_agent_gw: 192.168.1.1
 k3s_user: kubeuser
 k3s_template_storage: Storage-1TB
 k3s_disk_storage: local-lvm
 nextcloud_user: admin
-nextcloud_disk_storage: Storage-1TB
-nextcloud_storage_size: '500'
+nextcloud_password: '2406'
+nextcloud_storage_volumes:
+- 500Gi

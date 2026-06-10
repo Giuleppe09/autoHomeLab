@@ -2,6 +2,7 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HomeLab Manager - Gestione Servizi</title>
     <link rel="stylesheet" href="/static/css/style.css">
     <style>
@@ -10,6 +11,9 @@
         .service-card:hover { border-color: #7aa2f7; transform: translateY(-2px); }
         .service-card.active { border-color: #9ece6a; background: #1c1f30; box-shadow: 0 0 10px rgba(158, 206, 106, 0.2); }
         #console-output { background-color: #000; color: #0f0; font-family: monospace; padding: 15px; height: 380px; overflow-y: auto; white-space: pre-wrap; border-radius: 5px; margin-top: 20px; border: 1px solid #333; text-align: left; }
+        
+        /* Regola di sicurezza nativa per nascondere i blocchi finché il JS non li attiva */
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
@@ -32,33 +36,30 @@
 
         <section class="card hidden" id="form-section">
             <h2 id="form-title">Configurazione Parametri</h2>
-            
             <form id="dynamic-service-form" onsubmit="event.preventDefault(); saveServiceConfig();">
-                <div id="service-fields">
-                    </div>
-                
+                <div id="service-fields"></div>
                 <div style="width: 100%; display: flex; justify-content: flex-end; margin-top: 20px;">
                     <button type="submit" class="btn-primary" id="btn-save">Salva Configurazione</button>
                 </div>
             </form>
         </section>
 
-       <section id="setup-section" class="card hidden" style="text-align: center;">
+        <section id="setup-section" class="card hidden" style="text-align: center;">
             <h2 id="setup-title">🚀 Deploy Servizio</h2>
             <p>Parametri registrati con successo. Clicca Avvia per lanciare il Playbook Ansible.</p>
             
             <div id="success-url-container" class="hidden" style="background-color: #1c1f30; border: 1px solid #9ece6a; padding: 15px; border-radius: 8px; margin-bottom: 20px; color: #9ece6a;">
                 <p>🎉 <b>Installazione completata con successo!</b></p>
-                <p>Puoi accedere a Nextcloud al seguente indirizzo: <a id="nextcloud-link" href="#" target="_blank" style="color: #7aa2f7; font-weight: bold; text-decoration: underline;"></a></p>
+                <p>Puoi accedere all'applicazione al seguente indirizzo: <a id="nextcloud-link" href="#" target="_blank" style="color: #7aa2f7; font-weight: bold; text-decoration: underline;"></a></p>
             </div>
 
             <button id="btn-run" class="btn-primary" onclick="runServiceSetup()">Avvia Deployment</button>
-            <button id="btn-home" class="btn-secondary hidden" onclick="window.location.href='/dashboard'" style="margin-left: 10px;">Torna alla Dashboard</button>
+            <button id="btn-home" class="btn-secondary hidden" style="margin-left: 10px;">Torna alla Dashboard</button>
 
             <div id="console-output" class="hidden">In attesa dei processi...</div>
         </section>
-        
     </div>
+
     <script src="/static/js/services.js"></script>
 </body>
 </html>
